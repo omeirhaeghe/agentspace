@@ -23,12 +23,12 @@ from agentspace.host import registry
 from agentspace.host.supervisor import Supervisor
 
 BANNER = r"""
-   _                    _   ____
-  /_\   __ _  ___ _ __ | |_/ ___| _ __   __ _  ___ ___
- //_\\ / _` |/ _ \ '_ \| __\___ \| '_ \ / _` |/ __/ _ \
-/  _  \ (_| |  __/ | | | |_ ___) | |_) | (_| | (_|  __/
-\_/ \_/\__, |\___|_| |_|\__|____/| .__/ \__,_|\___\___|
-       |___/                     |_|     local agent runtime
+     ||      ||
+   +------------+
+   |  [o]  [o]  |     A G E N T S P A C E
+   |    ----    |     local agent runtime
+   +------------+
+     ||      ||
 """
 
 HELP = """\

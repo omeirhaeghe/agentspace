@@ -1,92 +1,97 @@
-# AgentSpace
+<p align="center">
+  <img src="docs/logo.svg" alt="AgentSpace" width="500">
+</p>
 
-A tiny **agent operating system** you run from a shell — built from scratch to learn how
-agents actually work. No high-level agent SDK: the tool-use loop, sessions, tool dispatch,
-and process supervision are all visible and hackable.
+<p align="center">
+  A tiny <b>agent operating system</b> you run from a shell — built from scratch to learn how agents actually work.<br>
+  No agent framework: the tool-loop, sessions, process supervision, and even <i>self-written tools</i> are all visible and hackable.
+</p>
 
-```
-HOST (REPL shell)  ──spawn/kill──>  agent: researcher  (uvicorn :7001)  raw Messages loop
-       │                            agent: shell-helper (uvicorn :7002)  raw Messages loop
-       └──HTTP POST /responses─────────────^
-```
+---
 
-- **Host** — an interactive shell (`agentspace>`) that starts/stops agents and sends them
-  messages. It is a control plane only; it never calls the model.
-- **Agents** — each runs as its own OS process exposing a Responses-style HTTP API
-  (`POST /responses`). They run in parallel and are visible in `ps`.
-- **Tools** — `web_search` (Anthropic server tool), `sh` (local shell), `load_skill`,
-  and `write_tool` (writes *new* tools via the [PI](https://github.com/badlogic/pi-mono)
-  coding agent — agents that extend themselves).
-- **Skills** — markdown playbooks in `skills/`, loaded on demand (progressive disclosure).
-- **Sessions** — per-agent conversation history persisted to disk.
-
-## Setup
+## Quick start
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...                 # agents use the raw Messages API
+export ANTHROPIC_API_KEY=sk-ant-...                 # agents call the Messages API
 uv sync                                              # install python deps
-npm install -g @mariozechner/pi-coding-agent         # the `pi` binary (for write_tool)
+npm install -g @mariozechner/pi-coding-agent         # optional: enables write_tool
+
+uv run agentspace                                    # launch the host shell
 ```
 
-> Without the key the shell still starts but warns, and `send` returns a clear error.
-> Without `pi`, only `write_tool` fails — everything else works.
-
-## Run
-
-```bash
-uv run agentspace
-```
-
-Then in the shell:
-
-```
-agentspace> ps
+```text
 agentspace> start researcher
-agentspace> send researcher "What is the latest stable Python release? cite a source"
+agentspace> send researcher "what's the latest stable python? cite a source"
 agentspace> start doc-writer
-agentspace> send doc-writer "Create a markdown doc 'treehouse.md' with sections Overview, Materials, Steps"
-agentspace> logs doc-writer
-agentspace> stop researcher
+agentspace> send doc-writer "create a markdown doc 'treehouse.md' with sections Overview, Materials, Steps"
+agentspace> ps
 agentspace> quit
 ```
 
-### Shell commands
-| command | description |
-|---------|-------------|
-| `ps` / `ls` | list registered agents + status (running/stopped, port, pid) |
-| `start <name>` / `stop <name>` / `restart <name>` | manage agent processes |
-| `send <name> "<msg>" [--session <id>] [--wait]` | send a message — **async**: returns a run id immediately and streams status; `--wait` blocks until done |
-| `status` | show in-flight runs being tracked |
-| `runs <name>` | list an agent's recent runs |
-| `logs <name> [n]` | tail the agent's server log |
+> No API key? The host still runs and you can start/stop agents — `send` just returns a clear error.
+
+---
+
+## How it works
+
+```text
+  HOST (REPL shell)  ──start/stop──▶  agent: researcher   (process · http :7001)
+        │                            agent: doc-writer    (process · http :7002)
+        └── send ──http POST──────────────▲  each runs its own raw Messages-API loop
+```
+
+**Host (control plane).** The `agentspace>` shell never calls the model. It just
+launches one OS process per agent, stops them, and relays your messages over HTTP.
+Agents run in parallel and show up in `ps`.
+
+**Agent (one process each).** Every agent is a small HTTP server wrapping a
+**hand-written tool loop** (`agentspace/agent/loop.py`) against the raw Anthropic
+Messages API:
+
+```text
+load history → call the model → if it wants a tool, run it and feed the result back → repeat → save
+```
+
+That loop is the whole point — nothing is hidden behind an SDK.
+
+**Tools** come in two flavors:
+- `web_search` is a **server tool** — Anthropic runs it; we never touch it.
+- `sh`, `load_skill`, `write_tool` are **client tools** — we execute them locally.
+
+**Skills** (`skills/<name>/SKILL.md`) are markdown playbooks with progressive
+disclosure: the prompt only lists a skill's name + description until the agent calls
+`load_skill` to pull in the full instructions.
+
+**Sessions** are conversation history persisted to disk, so an agent remembers across
+messages (`send … --session <id>`).
+
+**Async runs + live status.** `send` returns immediately with a run id; a background
+monitor streams each step (`🔧 web_search…`, `· thinking…`) and prints the reply when
+it's done. Fire several agents and watch them interleave.
+
+**Self-writing tools (the fun part).** Give an agent `write_tool` and it can author the
+tool it's missing: it shells out to the [PI](https://github.com/badlogic/pi-mono) coding
+agent, which writes a new module into `agentspace/agent/tools/generated/`, the registry
+hot-reloads, and the agent calls its brand-new tool on the next turn. That's how
+`doc-writer` ships with **no** document tool yet can still create one on demand.
+
+---
+
+## Shell commands
+
+| command | what it does |
+|---|---|
+| `ps` / `ls` | list agents and their status |
+| `start` / `stop` / `restart <name>` | manage agent processes |
+| `send <name> "<msg>" [--session <id>] [--wait]` | send a message (async; `--wait` blocks) |
+| `status` / `runs <name>` | in-flight runs / run history |
+| `logs <name> [n]` | tail an agent's log |
 | `sessions <name>` / `session <name> <id>` | list / inspect sessions |
-| `help` / `quit` | help / exit (offers to stop running agents) |
-
-### Async runs & live status
-
-`send` does not block. It starts the turn inside the agent process and returns a
-`run_id`; you keep the prompt. A background monitor streams each step as it happens
-and prints the reply when the run finishes:
-
-```
-agentspace> send researcher "latest stable python? cite a source"
-→ researcher run run_ab12 started (session 9f3c…). status streams below.
-agentspace>   [researcher·run_ab12] → received: latest stable python? cite a source
-  [researcher·run_ab12] · turn 1: thinking…
-  [researcher·run_ab12] 🔧 web_search(query='latest stable python release')
-  [researcher·run_ab12] ✓ web_search → …
-  [researcher·run_ab12] · turn 2: thinking…
-
-researcher> Python 3.x.y is the latest stable release … [source](https://…)
-  [session 9f3c… · 2 turns · 1 tool calls · 1234in/567out tokens]
-```
-
-Because runs are async you can fire several agents at once and watch them interleave;
-`status` shows what's in flight. Use `send … --wait` for scripts that want the reply inline.
+| `help` / `quit` | help / exit |
 
 ## Add an agent
 
-Drop a folder under `agents/`:
+Drop a folder under `agents/` — no code change needed:
 
 ```yaml
 # agents/my-agent/agent.yaml
@@ -94,41 +99,27 @@ name: my-agent
 model: claude-sonnet-4-6
 system_prompt: |
   You are a helpful agent.
-tools: [sh, load_skill]
+tools: [sh, load_skill]      # web_search, sh, load_skill, write_tool
 skills: [summarize]
-max_tokens: 4096
-can_author_tools: false    # set true to allow write_tool (PI)
+can_author_tools: false      # true to allow write_tool (PI)
 ```
-
-No code change needed — `ps` will show it immediately.
-
-## Add a skill
-
-Create `skills/<name>/SKILL.md` with front-matter (`name`, `description`) and a body of
-instructions. Agents that list the skill see only its name+description until they call
-`load_skill`, which returns the full body.
-
-## How an agent writes its own tool (PI)
-
-Give an agent `write_tool` + `can_author_tools: true`. When it lacks a capability it calls
-`write_tool(name, description, spec)`; AgentSpace runs `pi -p` with
-[`docs/TOOL_CONTRACT.md`](docs/TOOL_CONTRACT.md) as the system prompt, PI writes
-`agentspace/agent/tools/generated/<name>.py`, the registry hot-reloads, and the new tool is
-callable on the agent's next turn. See `agents/doc-writer/` for the demo.
-
-## Safety note
-
-The `sh` tool runs real shell commands on your machine (inside the agent's working dir, with a
-timeout, logged). That's intentional for a local sandbox — don't expose these agents to
-untrusted input. `write_tool` likewise lets a model write+run code via PI.
 
 ## Layout
 
+```text
+agentspace/host/      host REPL, supervisor, registry  (control plane)
+agentspace/agent/     loop, server, sessions, tools, pi_bridge  (one per process)
+agents/               declarative agent registry (agent.yaml each)
+skills/               markdown skills
+docs/TOOL_CONTRACT.md the tool contract (also handed to PI)
 ```
-agentspace/host/      # REPL shell, supervisor, registry (control plane)
-agentspace/agent/     # loop, server, sessions, tools, pi_bridge (the agent process)
-agents/               # declarative agent registry (agent.yaml per agent)
-skills/               # markdown skills
-docs/TOOL_CONTRACT.md # the tool module contract (also fed to PI)
-runtime/              # gitignored: pids, ports, logs, sessions
-```
+
+## Safety
+
+`sh` runs real commands and `write_tool` writes & runs code via PI — both on your
+machine, inside the agent's working dir, logged. Great for a local sandbox; don't point
+these agents at untrusted input.
+
+## License
+
+[MIT](LICENSE) © 2026 Olivier Meirhaeghe
