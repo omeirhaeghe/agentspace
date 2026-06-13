@@ -1,0 +1,18 @@
+# runtime state: pids, ports, logs, sessions
+runtime/
+
+# PI-authored tools (regenerated on demand)
+agentspace/agent/tools/generated/*.py
+
+# documents produced by agents
+documents/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.uv/
+*.egg-info/
+
+# env
+.env
