@@ -43,6 +43,10 @@ def tool_contract_path(root: Path) -> Path:
     return root / "docs" / "TOOL_CONTRACT.md"
 
 
+def agent_contract_path(root: Path) -> Path:
+    return root / "docs" / "AGENT_CONTRACT.md"
+
+
 def generated_tools_dir() -> Path:
     """Directory where PI-authored tools live (inside the package)."""
     return Path(__file__).resolve().parent.parent / "agent" / "tools" / "generated"

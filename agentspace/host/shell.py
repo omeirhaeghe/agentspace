@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 from agentspace.common import paths
-from agentspace.host import registry
+from agentspace.host import agent_factory, registry
 from agentspace.host.orchestrator import Orchestrator
 from agentspace.host.supervisor import Supervisor
 
@@ -38,6 +38,7 @@ Type a goal in plain English and the conductor routes it to the right agent(s):
 
 commands:
   agents                       list agents and what each is for
+  create-agent <description>   have PI build a new agent and add it to the registry
   do <goal> | ask <goal>       explicitly send a goal to the conductor
   ps | ls                      list agents and their status
   start <name>                 start an agent process
@@ -203,6 +204,22 @@ class Shell:
         for spec in agents:
             print(f"{spec.name:<14}{spec.description or '(no description)'}")
 
+    def cmd_create_agent(self, description: str):
+        """Have PI design a new agent from a description (runs in the background)."""
+        description = description.strip()
+        if not description:
+            print('usage: create-agent <description>   e.g. create-agent a stock portfolio tracking agent')
+            return
+
+        def work():
+            print(f"🏗  building an agent for: {description}")
+            ok, message, name = agent_factory.create_agent(
+                self.root, description, progress=lambda t: print(f"  ✎ {t}")
+            )
+            print(f"\n{message}\n")
+
+        threading.Thread(target=work, daemon=True).start()
+
     def cmd_orchestrate(self, goal: str):
         """Hand a natural-language goal to the conductor (runs in the background)."""
         goal = goal.strip()
@@ -210,7 +227,7 @@ class Shell:
             return
         icons = {
             "think": "🧭", "say": "🧭", "step": "  …", "delegate": "  →",
-            "subevent": "      ·", "reply": "  ✓", "error": "  ✗",
+            "build": "  🏗", "subevent": "      ·", "reply": "  ✓", "error": "  ✗",
         }
 
         def work():
@@ -282,6 +299,7 @@ class Shell:
     COMMANDS = {
         "quit", "exit", "q", "help", "?", "ps", "ls", "start", "stop", "restart",
         "send", "status", "runs", "logs", "sessions", "session", "agents", "do", "ask",
+        "create-agent",
     }
 
     def dispatch(self, line: str) -> bool:
@@ -297,6 +315,9 @@ class Shell:
             return True
         if first in ("do", "ask"):
             self.cmd_orchestrate(line[len(first):])
+            return True
+        if first == "create-agent":
+            self.cmd_create_agent(line[len("create-agent"):])
             return True
 
         try:

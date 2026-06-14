@@ -20,7 +20,7 @@ import os
 import time
 from pathlib import Path
 
-from agentspace.host import registry
+from agentspace.host import agent_factory, registry
 
 CONDUCTOR_PROMPT = """\
 You are the AgentSpace conductor — the orchestration brain of a local agent runtime.
@@ -38,6 +38,8 @@ How to work:
 
 Guidelines:
 - Match agents by their description and tools. Prefer existing agents.
+- If NO existing agent fits the goal, use create_agent to build a suitable one, then
+  delegate to it with run_agent.
 - If an agent isn't running, run_agent starts it automatically.
 - Keep each delegated task specific and self-contained.
 - Don't over-delegate: simple questions may need just one agent (or a direct answer).
@@ -63,6 +65,24 @@ TOOLS = [
                 "task": {"type": "string", "description": "Self-contained task with full context."},
             },
             "required": ["agent", "task"],
+        },
+    },
+    {
+        "name": "create_agent",
+        "description": (
+            "Create a NEW agent from a natural-language description when no existing "
+            "agent fits the goal. PI designs it and adds it to the registry; you can then "
+            "delegate to it with run_agent. Returns the new agent's name."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "What the agent should be/do, e.g. 'a stock portfolio tracking agent'.",
+                }
+            },
+            "required": ["description"],
         },
     },
 ]
@@ -176,6 +196,13 @@ class Orchestrator:
                         result = self._list_agents()
                     elif block.name == "run_agent":
                         result = self._run_agent(args.get("agent", ""), args.get("task", ""), emit)
+                    elif block.name == "create_agent":
+                        desc = args.get("description", "")
+                        emit("build", f"creating a new agent: {desc[:80]}")
+                        ok, msg, _name = agent_factory.create_agent(
+                            self.root, desc, progress=lambda t: emit("subevent", t)
+                        )
+                        result = msg
                     else:
                         result = f"ERROR: unknown tool {block.name}"
                     tool_results.append(

@@ -87,11 +87,16 @@ unified, timestamped, color-coded feed of *everything* across all agents — eve
 turn, tool call, PI authoring step, and final reply. Read-only; great for watching an
 orchestration unfold while you keep typing in the main shell.
 
-**Self-writing tools (the fun part).** Give an agent `write_tool` and it can author the
-tool it's missing: it shells out to the [PI](https://github.com/badlogic/pi-mono) coding
-agent, which writes a new module into `agentspace/agent/tools/generated/`, the registry
-hot-reloads, and the agent calls its brand-new tool on the next turn. That's how
-`doc-writer` ships with **no** document tool yet can still create one on demand.
+**Self-extending (the fun part).** The system can grow itself, at two levels, both via
+the [PI](https://github.com/badlogic/pi-mono) coding agent:
+- **New tools** — give an agent `write_tool` and it authors the tool it's missing: PI
+  writes a module into `agentspace/agent/tools/generated/`, the registry hot-reloads, and
+  the agent calls its brand-new tool on the next turn. That's how `doc-writer` ships with
+  **no** document tool yet creates one on demand.
+- **New agents** — `create-agent <description>` (or just ask the conductor) has PI write a
+  whole `agents/<slug>/agent.yaml` from your description, wiring up its prompt, tools, and
+  skills. The registry discovers it instantly — no restart. e.g. *"a stock portfolio
+  tracking agent"* → a ready-to-run agent that can even author its own quote-fetching tool.
 
 ---
 
@@ -101,6 +106,7 @@ hot-reloads, and the agent calls its brand-new tool on the next turn. That's how
 |---|---|
 | *(plain English)* | hand a goal to the conductor — it picks & orchestrates agents |
 | `agents` | list agents and what each is for |
+| `create-agent <description>` | have PI build a new agent and add it to the registry |
 | `do <goal>` / `ask <goal>` | explicitly send a goal to the conductor |
 | `ps` / `ls` | list agents and their status |
 | `start` / `stop` / `restart <name>` | manage agent processes |
