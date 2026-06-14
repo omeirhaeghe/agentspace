@@ -4,8 +4,47 @@
 
 <p align="center">
   A tiny <b>agent operating system</b> you run from a shell — built from scratch to learn how agents actually work.<br>
-  No agent framework: the tool-loop, sessions, process supervision, and even <i>self-written tools</i> are all visible and hackable.
+  Talk to it in plain English; it orchestrates agents, and <i>writes new tools and whole agents for itself</i> — all from a hand-written, hackable loop (no agent framework).
 </p>
+
+---
+
+## ✨ Highlights
+
+- 🗣️ **Just talk to it.** Type a goal in plain English; a built-in **conductor** discovers
+  the right agents, delegates, chains them, and synthesizes the answer.
+- 🛠️ **Agents write their own tools.** Missing a capability? An agent calls `write_tool`
+  and [PI](https://github.com/badlogic/pi-mono) authors it into the registry — usable on
+  the next turn.
+- 🤖 **The system writes its own agents.** `create-agent "a stock portfolio tracker"`
+  (or just ask) and PI builds a whole new agent, live, no restart.
+- 🧩 **Everything is hackable & visible.** A hand-written tool-loop (no agent SDK),
+  declarative agents (`agent.yaml`), markdown skills, on-disk sessions.
+- ⚡ **Parallel & observable.** Each agent is its own process; runs are async with a live
+  status feed, plus a separate `agentspace-monitor` console.
+
+## 🎬 Examples
+
+Type these straight into the `agentspace>` prompt:
+
+```text
+# orchestration — conductor picks researcher → doc-writer on its own
+research france's odds of winning the world cup and make a cool powerpoint about it
+
+# self-writing agent — PI builds it, then you use it
+create-agent a stock portfolio tracking agent
+start stock-portfolio-tracker
+send stock-portfolio-tracker "how would $5k split across NVDA, AAPL, MSFT be doing?"
+
+# self-writing tool — doc-writer has no document tool, so it authors one
+send doc-writer "create a markdown doc 'treehouse.md' with sections Overview, Materials, Steps"
+
+# plain research with citations
+what's the latest stable python release? cite a source
+
+# let the conductor figure out it needs a new kind of agent entirely
+I want to track my reading list — set that up and add "Dune"
+```
 
 ---
 
