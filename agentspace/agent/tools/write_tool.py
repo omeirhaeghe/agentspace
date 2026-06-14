@@ -42,5 +42,7 @@ SCHEMA = {
 
 
 def handler(ctx, name: str, description: str, spec: str) -> str:
-    ok, message = pi_bridge.author_tool(ctx.root, name, description, spec)
+    ok, message = pi_bridge.author_tool(
+        ctx.root, name, description, spec, progress=getattr(ctx, "progress", None)
+    )
     return message

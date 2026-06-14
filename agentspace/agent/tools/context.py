@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
+
+
+def _noop(text: str) -> None:  # default progress sink
+    return None
 
 
 @dataclass
@@ -13,3 +18,6 @@ class ToolContext:
     skills_dir: Path
     allowed_skills: list[str]
     agent_name: str
+    # Optional live-progress channel: a long-running tool can call
+    # ctx.progress("…") to stream interim status into the agent's run events.
+    progress: Callable[[str], None] = field(default=_noop)

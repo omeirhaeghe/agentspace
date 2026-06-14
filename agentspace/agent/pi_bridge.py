@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 from agentspace.common import paths
@@ -29,8 +30,13 @@ def _rel(root: Path, p: Path) -> str:
         return str(p)
 
 
-def author_tool(root: Path, name: str, description: str, spec: str) -> tuple[bool, str]:
-    """Drive PI to write a new tool module. Returns (ok, message)."""
+def author_tool(root: Path, name: str, description: str, spec: str, progress=None) -> tuple[bool, str]:
+    """Drive PI to write a new tool module. Returns (ok, message).
+
+    `progress(text)` (optional) receives PI's output line-by-line as it works, so
+    callers can stream interim status instead of waiting for the whole run.
+    """
+    progress = progress or (lambda text: None)
     if not _VALID_NAME.match(name):
         return False, (
             f"ERROR: invalid tool name '{name}'. Use snake_case starting with a "
@@ -82,30 +88,52 @@ def author_tool(root: Path, name: str, description: str, spec: str) -> tuple[boo
     cmd.append(prompt)
 
     print(f"[write_tool] invoking pi to author '{name}' -> {target_rel}", flush=True)
+    progress(f"pi: authoring {name} → {target_rel}")
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=str(root),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=PI_TIMEOUT_SECONDS,
+            bufsize=1,
             env=os.environ.copy(),
         )
-    except subprocess.TimeoutExpired:
-        return False, f"ERROR: pi timed out after {PI_TIMEOUT_SECONDS}s while authoring '{name}'."
     except Exception as exc:  # noqa: BLE001
         return False, f"ERROR: failed to run pi: {exc}"
 
-    pi_out = ((proc.stdout or "") + (proc.stderr or "")).strip()
-    if len(pi_out) > 4000:
-        pi_out = pi_out[-4000:]
+    # Watchdog: kill pi if it runs past the timeout.
+    timed_out = {"v": False}
 
+    def _kill():
+        timed_out["v"] = True
+        proc.kill()
+
+    timer = threading.Timer(PI_TIMEOUT_SECONDS, _kill)
+    timer.start()
+
+    lines: list[str] = []
+    try:
+        for raw in proc.stdout:  # streams as pi prints
+            line = raw.rstrip()
+            if line:
+                lines.append(line)
+                progress(f"pi: {line[:120]}")
+    finally:
+        proc.wait()
+        timer.cancel()
+
+    if timed_out["v"]:
+        return False, f"ERROR: pi timed out after {PI_TIMEOUT_SECONDS}s while authoring '{name}'."
+
+    pi_out = "\n".join(lines).strip()[-4000:]
     if not target.exists():
         return False, (
             f"ERROR: pi finished (exit {proc.returncode}) but {target_rel} was not "
             f"created.\n--- pi output ---\n{pi_out}"
         )
 
+    progress(f"pi: done — {target_rel} written")
     return True, (
         f"✓ Authored tool '{name}' at {target_rel} (pi exit {proc.returncode}). "
         "The tool registry has been reloaded; the tool is now callable."

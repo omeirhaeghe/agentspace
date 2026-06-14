@@ -62,6 +62,7 @@ _ICONS = {
     "say": "💬",
     "tool": "🔧",
     "tool_done": "✓",
+    "progress": "  ✎",
     "system": "⚙",
     "error": "✗",
 }

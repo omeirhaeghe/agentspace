@@ -17,6 +17,7 @@ uv sync                                              # install python deps
 npm install -g @mariozechner/pi-coding-agent         # optional: enables write_tool
 
 uv run agentspace                                    # launch the host shell
+uv run agentspace-monitor                            # (optional, 2nd terminal) live feed
 ```
 
 ```text
@@ -77,7 +78,14 @@ messages (`send … --session <id>`).
 
 **Async runs + live status.** `send` returns immediately with a run id; a background
 monitor streams each step (`🔧 web_search…`, `· thinking…`) and prints the reply when
-it's done. Fire several agents and watch them interleave.
+it's done. Fire several agents and watch them interleave. Long-running tools stream
+interim progress too — `write_tool` reports each of PI's steps (`✎ pi: writing
+create_document.py …`) instead of going dark for minutes.
+
+**A separate monitor console.** Run `agentspace-monitor` in a second terminal for a
+unified, timestamped, color-coded feed of *everything* across all agents — every model
+turn, tool call, PI authoring step, and final reply. Read-only; great for watching an
+orchestration unfold while you keep typing in the main shell.
 
 **Self-writing tools (the fun part).** Give an agent `write_tool` and it can author the
 tool it's missing: it shells out to the [PI](https://github.com/badlogic/pi-mono) coding

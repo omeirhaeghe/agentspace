@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 from agentspace.agent.config import AgentSpec
@@ -79,6 +80,8 @@ class Agent:
 
         tools, handlers = registry.assemble(self.spec)
         system = self._system_prompt()
+        # A per-run context whose progress() streams interim tool output as events.
+        ctx = replace(self.ctx, progress=lambda text: emit("progress", text))
         usage = {"input_tokens": 0, "output_tokens": 0, "iterations": 0, "tool_calls": 0}
         emit("start", f"received: {user_input[:80]}")
 
@@ -116,7 +119,7 @@ class Agent:
                     if block.name == "write_tool":
                         wrote_tool = True
                     emit("tool", f"{block.name}({_compact(dict(block.input))})")
-                    result = self._dispatch(handlers, block.name, dict(block.input))
+                    result = self._dispatch(ctx, handlers, block.name, dict(block.input))
                     emit("tool_done", f"{block.name} → {result[:80]}")
                     tool_results.append(
                         {
@@ -168,13 +171,13 @@ class Agent:
                 if text:
                     emit("say", text[:120])
 
-    def _dispatch(self, handlers, name: str, tool_input: dict) -> str:
+    def _dispatch(self, ctx, handlers, name: str, tool_input: dict) -> str:
         handler = handlers.get(name)
         if handler is None:
             return f"ERROR: tool '{name}' is not available."
         try:
             print(f"[tool] {name}({tool_input})", flush=True)
-            result = handler(self.ctx, **tool_input)
+            result = handler(ctx, **tool_input)
             return result if isinstance(result, str) else str(result)
         except Exception as exc:  # noqa: BLE001
             return f"ERROR: tool '{name}' raised: {exc}"
