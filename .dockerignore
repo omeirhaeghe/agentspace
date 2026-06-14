@@ -1,0 +1,13 @@
+.git
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+runtime/
+output/
+documents/
+portfolio_data/
+deploys.yaml
+.env
+*.pptx
+*.docx

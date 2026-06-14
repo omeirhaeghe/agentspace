@@ -23,7 +23,7 @@ from agentspace.agent.mcp_client import load_catalog
 from agentspace.agent.tools import registry as tool_registry
 from agentspace.agent.tools.skills import skill_description
 from agentspace.common import paths
-from agentspace.host import agent_factory, registry
+from agentspace.host import agent_factory, deploy, registry
 from agentspace.host import settings as settings_mod
 from agentspace.host.orchestrator import Orchestrator
 from agentspace.host.supervisor import Supervisor
@@ -46,6 +46,9 @@ Commands start with "/" (anything without a slash goes to the conductor):
   /settings [...]               show/change models live (agents, conductor, pi, key)
   /setup                        re-run the first-time setup flow
   /mcp                          list MCP servers and live connection status
+  /deploy <agent>               deploy an agent to Render (cloud); reachable like a local one
+  /undeploy <agent>             remove a deployed agent from Render
+  /deploys                      list deployed (remote) agents and their URLs
   /agents                       list agents and what each is for
   /create-agent <description>   have PI build a new agent and add it to the registry
   /clean [output|tools|sessions|all]
@@ -110,14 +113,16 @@ class Shell:
         if not agents:
             print(f"no agents found under {paths.agents_dir(self.root)}")
             return
-        print(f"{'NAME':<14}{'STATUS':<10}{'PORT':<7}{'PID':<8}{'MODEL':<22}TOOLS")
+        print(f"{'NAME':<18}{'STATUS':<10}{'LOCATION':<26}{'MODEL':<22}TOOLS")
         for spec in agents:
             st = self.sup.status(spec.name)
             status = "running" if st["running"] else "stopped"
-            port = str(st["port"] or "-")
-            pid = str(st["pid"] or "-")
+            if st["location"] == "remote":
+                location = st["url"].replace("https://", "").replace("http://", "")
+            else:
+                location = f"local :{st['port']}" if st["port"] else "local"
             tools = ",".join(spec.tools) or "-"
-            print(f"{spec.name:<14}{status:<10}{port:<7}{pid:<8}{spec.model:<22}{tools}")
+            print(f"{spec.name:<18}{status:<10}{location:<26}{spec.model:<22}{tools}")
 
     def _print_final(self, name: str, data: dict) -> None:
         print(f"\n{name}> {data.get('output_text', '')}\n")
@@ -559,6 +564,39 @@ class Shell:
 
         threading.Thread(target=work, daemon=True).start()
 
+    def cmd_deploy(self, args):
+        if not args:
+            print("usage: /deploy <agent>   — deploy an agent to Render (needs RENDER_API_KEY + AGENTSPACE_TOKEN)")
+            return
+        name = args[0]
+
+        def work():
+            print(f"☁  deploying {name} to Render…")
+            ok, msg, _info = deploy.create_or_deploy(self.root, name, progress=lambda t: print(f"  · {t}"))
+            print(f"\n{msg}\n")
+            if ok:
+                print(f"  now reachable like any agent: /send {name} \"…\"\n")
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def cmd_undeploy(self, args):
+        if not args:
+            print("usage: /undeploy <agent>")
+            return
+        ok, msg = deploy.delete(self.root, args[0], progress=lambda t: print(f"  · {t}"))
+        print(msg)
+
+    def cmd_deploys(self, args):
+        from agentspace.host import remotes
+        deployed = remotes.load(self.root)
+        if not deployed:
+            print("no agents deployed. /deploy <agent> to host one on Render.")
+            return
+        print(f"{'AGENT':<16}{'STATUS':<10}URL")
+        for name, info in deployed.items():
+            state = "reachable" if self.sup.is_running(name) else "unreachable"
+            print(f"{name:<16}{state:<10}{info['url']}")
+
     def cmd_orchestrate(self, goal: str):
         """Hand a natural-language goal to the conductor (runs in the background)."""
         goal = goal.strip()
@@ -683,6 +721,9 @@ class Shell:
             "settings": self.cmd_settings,
             "setup": self.cmd_setup,
             "mcp": self.cmd_mcp,
+            "deploy": self.cmd_deploy,
+            "undeploy": self.cmd_undeploy,
+            "deploys": self.cmd_deploys,
             "clean": self.cmd_clean,
             "trash": self.cmd_trash,
             "agents": self.cmd_agents,

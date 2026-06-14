@@ -32,7 +32,14 @@ def skills_dir(root: Path) -> Path:
 
 
 def runtime_dir(root: Path) -> Path:
-    return root / "runtime"
+    # Allow pointing runtime state (sessions, logs) at a mounted disk in the cloud.
+    env = os.environ.get("AGENTSPACE_RUNTIME_DIR")
+    return Path(env).resolve() if env else root / "runtime"
+
+
+def deploys_file(root: Path) -> Path:
+    """Local registry of remotely-deployed agents (name -> url/service_id)."""
+    return root / "deploys.yaml"
 
 
 def output_dir(root: Path) -> Path:

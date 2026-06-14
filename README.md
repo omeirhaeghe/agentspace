@@ -26,6 +26,9 @@
 - 🔌 **MCP built in.** Agents can use any [Model Context Protocol](https://modelcontextprotocol.io)
   server's tools (filesystem, fetch, git, github, … ) — declared in `mcp/servers.yaml`,
   wired per agent. Plus native tools: `read_file`, `write_file`, `http_fetch`, `python`.
+- ☁️ **Deploy to the cloud.** `/deploy <agent>` hosts an agent on [Render](https://render.com)
+  (token-protected) straight from the shell — then `/send` it like any local one. See
+  [docs/DEPLOY.md](docs/DEPLOY.md).
 - 🧩 **Everything is hackable & visible.** A hand-written tool-loop (no agent SDK),
   declarative agents (`agent.yaml`), markdown skills, on-disk sessions.
 - ⚡ **Parallel & observable.** Each agent is its own process; runs are async with a live
@@ -197,6 +200,7 @@ Commands start with `/`. Anything without a slash is a natural-language goal for
 | `/settings [...]` | show/change models live (agents, conductor, PI) + set the API key |
 | `/setup` | re-run the first-time setup flow |
 | `/mcp` | list MCP servers and live connection status |
+| `/deploy <agent>` / `/undeploy` / `/deploys` | host an agent on Render (cloud) & manage it |
 | `/agents` | list agents and what each is for |
 | `/create-agent <description>` | have PI build a new agent and add it to the registry |
 | `/clean [output\|tools\|sessions\|all]` | move agent-produced files to trash (default: `output/`) |
@@ -233,7 +237,8 @@ agentspace/agent/     loop, server, sessions, tools, pi_bridge, mcp_client  (one
 agents/               declarative agent registry (agent.yaml each)
 skills/               markdown skills
 mcp/servers.yaml      MCP server catalog (filesystem, fetch, git, github)
-docs/                 TOOL_CONTRACT, AGENT_CONTRACT, MCP
+Dockerfile, render.yaml   cloud-deploy image + Render blueprint
+docs/                 TOOL_CONTRACT, AGENT_CONTRACT, MCP, DEPLOY
 ```
 
 ## Safety

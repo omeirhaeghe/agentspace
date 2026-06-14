@@ -19,13 +19,33 @@ from pathlib import Path
 import httpx
 
 from agentspace.common import paths
-from agentspace.host import registry
+from agentspace.host import registry, remotes
 
 
 class Supervisor:
     def __init__(self, root: Path):
         self.root = root
         self._procs: dict[str, subprocess.Popen] = {}
+
+    # -- where an agent lives (local port vs remote URL) ---------------------
+    def remote(self, name: str) -> dict | None:
+        """Deploy info if the agent is deployed remotely, else None."""
+        return remotes.get(self.root, name)
+
+    def base_url(self, name: str) -> str | None:
+        info = self.remote(name)
+        if info:
+            return info["url"].rstrip("/")
+        port = self.port(name)
+        return f"http://127.0.0.1:{port}" if port else None
+
+    def auth_headers(self, name: str) -> dict:
+        """Bearer header for remote agents (uses the shared AGENTSPACE_TOKEN)."""
+        if self.remote(name):
+            token = os.environ.get("AGENTSPACE_TOKEN")
+            if token:
+                return {"Authorization": f"Bearer {token}"}
+        return {}
 
     # -- runtime state files -------------------------------------------------
     def _dir(self, name: str) -> Path:
@@ -64,14 +84,32 @@ class Supervisor:
         return True
 
     def is_running(self, name: str) -> bool:
+        info = self.remote(name)
+        if info:
+            try:
+                return httpx.get(info["url"].rstrip("/") + "/health", timeout=4).status_code == 200
+            except httpx.HTTPError:
+                return False
         pid = self.pid(name)
         return bool(pid and self._alive(pid))
 
     def status(self, name: str) -> dict:
+        info = self.remote(name)
+        if info:
+            return {
+                "name": name,
+                "running": self.is_running(name),
+                "location": "remote",
+                "url": info["url"],
+                "pid": None,
+                "port": None,
+            }
         running = self.is_running(name)
         return {
             "name": name,
             "running": running,
+            "location": "local",
+            "url": None,
             "pid": self.pid(name) if running else None,
             "port": self.port(name) if running else None,
         }
@@ -84,6 +122,10 @@ class Supervisor:
             return s.getsockname()[1]
 
     def start(self, name: str, ready_timeout: float = 20.0) -> dict:
+        if self.remote(name):
+            ok = self.is_running(name)
+            return {"ok": ok, "message": f"{name} is deployed remotely ({'reachable' if ok else 'unreachable'}); "
+                    "use /deploy to (re)deploy or /undeploy to remove."}
         if self.is_running(name):
             return {"ok": True, "message": f"{name} already running", "port": self.port(name)}
 
@@ -138,6 +180,8 @@ class Supervisor:
         return {"ok": False, "message": f"{name} did not become healthy in {ready_timeout}s."}
 
     def stop(self, name: str, timeout: float = 5.0) -> dict:
+        if self.remote(name):
+            return {"ok": False, "message": f"{name} is deployed remotely; use /undeploy {name} to remove it."}
         pid = self.pid(name)
         if not pid or not self._alive(pid):
             self._clear_files(name)
@@ -174,17 +218,17 @@ class Supervisor:
     def send(self, name: str, text: str, session_id: str | None = None,
              wait: bool = False, timeout: float = 300.0) -> dict:
         """Start a turn. Returns immediately with a run_id (async) unless wait=True."""
-        port = self.port(name)
-        if not self.is_running(name) or not port:
-            return {"ok": False, "message": f"{name} is not running. `start {name}` first."}
+        base = self.base_url(name)
+        if not base or not self.is_running(name):
+            hint = "use `/deploy`" if self.remote(name) else f"`start {name}` first"
+            return {"ok": False, "message": f"{name} is not reachable. {hint}."}
         body = {"input": text}
         if session_id:
             body["session_id"] = session_id
-        url = f"http://127.0.0.1:{port}/responses"
-        if wait:
-            url += "?wait=true"
+        url = f"{base}/responses" + ("?wait=true" if wait else "")
         try:
-            resp = httpx.post(url, json=body, timeout=timeout if wait else 15.0)
+            resp = httpx.post(url, json=body, headers=self.auth_headers(name),
+                              timeout=timeout if wait else 15.0)
             resp.raise_for_status()
             return {"ok": True, "data": resp.json()}
         except httpx.HTTPError as exc:
@@ -197,17 +241,19 @@ class Supervisor:
         return self.get_json(name, "/runs")
 
     def get_json(self, name: str, path: str, timeout: float = 10.0) -> dict:
-        port = self.port(name)
-        if not self.is_running(name) or not port:
-            return {"ok": False, "message": f"{name} is not running."}
+        base = self.base_url(name)
+        if not base or not self.is_running(name):
+            return {"ok": False, "message": f"{name} is not reachable."}
         try:
-            resp = httpx.get(f"http://127.0.0.1:{port}{path}", timeout=timeout)
+            resp = httpx.get(f"{base}{path}", headers=self.auth_headers(name), timeout=timeout)
             resp.raise_for_status()
             return {"ok": True, "data": resp.json()}
         except httpx.HTTPError as exc:
             return {"ok": False, "message": f"request to {name} failed: {exc}"}
 
     def tail_log(self, name: str, n: int = 40) -> str:
+        if self.remote(name):
+            return "(remote agent — view logs in your Render dashboard)"
         path = self._log_file(name)
         if not path.exists():
             return "(no log yet)"

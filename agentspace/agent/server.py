@@ -15,12 +15,13 @@ exposed as a growing list of events per run:
 
 from __future__ import annotations
 
+import os
 import threading
 import uuid
 from collections import OrderedDict
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 
 from agentspace.agent.config import AgentSpec
 from agentspace.agent.loop import Agent
@@ -28,6 +29,19 @@ from agentspace.agent.tools import registry
 from agentspace.common.schemas import HealthResponse, ResponsesRequest
 
 MAX_RUNS_KEPT = 100
+
+
+def _require_token(request: Request) -> None:
+    """Bearer-token auth, active only when AGENTSPACE_TOKEN is set (i.e. remote).
+
+    Local runs leave the env unset → no auth, unchanged. `/health` stays open so
+    platform health checks and host liveness probes work without the token.
+    """
+    token = os.environ.get("AGENTSPACE_TOKEN")
+    if not token or request.url.path == "/health":
+        return
+    if request.headers.get("Authorization") != f"Bearer {token}":
+        raise HTTPException(status_code=401, detail="unauthorized")
 
 
 class Run:
@@ -67,7 +81,7 @@ class Run:
 
 
 def create_app(spec: AgentSpec, root: Path) -> FastAPI:
-    app = FastAPI(title=f"agentspace:{spec.name}")
+    app = FastAPI(title=f"agentspace:{spec.name}", dependencies=[Depends(_require_token)])
     agent = Agent(spec, root)
     runs: "OrderedDict[str, Run]" = OrderedDict()
     # Serialize turns that share a session so history writes don't clobber.

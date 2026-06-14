@@ -18,5 +18,8 @@ __pycache__/
 # env
 .env
 
+# local cloud-deploy registry (urls/service ids; no secrets, but local-only)
+deploys.yaml
+
 # macOS
 .DS_Store

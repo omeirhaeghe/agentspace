@@ -1,0 +1,24 @@
+# Render Blueprint — declarative deploy of an AgentSpace agent as a web service.
+#
+# This is the manual / git-push path; the `/deploy` command does the same via the
+# Render API. Duplicate the service block per agent you want hosted (change `name`
+# and AGENTSPACE_AGENT). Set the `sync: false` secrets in the Render dashboard.
+services:
+  - type: web
+    name: agentspace-researcher
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter            # 'free' spins down when idle; 'starter'+ stays warm
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: AGENTSPACE_AGENT
+        value: researcher
+      - key: ANTHROPIC_API_KEY
+        sync: false          # set in dashboard (secret)
+      - key: AGENTSPACE_TOKEN
+        sync: false          # set in dashboard (shared bearer token)
+    disk:
+      name: agentspace-data
+      mountPath: /data       # AGENTSPACE_RUNTIME_DIR=/data/runtime (from the image)
+      sizeGB: 1

@@ -17,6 +17,7 @@ dependencies = [
 [project.scripts]
 agentspace = "agentspace.host.shell:main"
 agentspace-monitor = "agentspace.host.monitor:main"
+agentspace-serve = "agentspace.agent.serve:main"
 
 [build-system]
 requires = ["hatchling"]
