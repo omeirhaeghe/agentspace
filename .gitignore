@@ -4,7 +4,8 @@ runtime/
 # PI-authored tools (regenerated on demand)
 agentspace/agent/tools/generated/*.py
 
-# documents produced by agents
+# artifacts produced by agents/tools
+output/
 documents/
 
 # python

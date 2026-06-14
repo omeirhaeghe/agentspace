@@ -35,6 +35,11 @@ def runtime_dir(root: Path) -> Path:
     return root / "runtime"
 
 
+def output_dir(root: Path) -> Path:
+    """Where agents/tools write the artifacts they produce (gitignored)."""
+    return root / "output"
+
+
 def agent_runtime_dir(root: Path, name: str) -> Path:
     return runtime_dir(root) / name
 

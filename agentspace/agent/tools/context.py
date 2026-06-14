@@ -18,6 +18,8 @@ class ToolContext:
     skills_dir: Path
     allowed_skills: list[str]
     agent_name: str
+    # Where tools should write the artifacts they produce (gitignored).
+    output_dir: Path = field(default_factory=lambda: Path("output"))
     # Optional live-progress channel: a long-running tool can call
     # ctx.progress("…") to stream interim status into the agent's run events.
     progress: Callable[[str], None] = field(default=_noop)

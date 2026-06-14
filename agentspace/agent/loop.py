@@ -44,6 +44,7 @@ class Agent:
             skills_dir=self.skills_dir,
             allowed_skills=list(spec.skills),
             agent_name=spec.name,
+            output_dir=paths.output_dir(root),
         )
         self._client = None
 

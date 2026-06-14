@@ -58,9 +58,22 @@ def handler(ctx, **input):
 |-------|------|---------|
 | `ctx.root` | `pathlib.Path` | AgentSpace repo root |
 | `ctx.workdir` | `pathlib.Path` | working dir for file/command ops (defaults to repo root) |
+| `ctx.output_dir` | `pathlib.Path` | **where to write any artifacts the tool produces** |
 | `ctx.skills_dir` | `pathlib.Path` | the `skills/` directory |
 | `ctx.allowed_skills` | `list[str]` | skills this agent may load |
 | `ctx.agent_name` | `str` | the calling agent's name |
+
+### Writing output files (IMPORTANT)
+If your tool produces a file (a document, image, deck, export, …), write it under
+`ctx.output_dir` — never to the repo root or the current working directory. Resolve a
+user-supplied filename against it and create the dir first:
+
+```python
+ctx.output_dir.mkdir(parents=True, exist_ok=True)
+path = ctx.output_dir / filename        # filename like "report.pptx"
+```
+
+Return the path you wrote so the caller can find it.
 
 ## Full minimal example
 
@@ -83,9 +96,8 @@ SCHEMA = {
 
 
 def handler(ctx, filename, title, sections):
-    out_dir = ctx.workdir / "documents"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / filename
+    ctx.output_dir.mkdir(parents=True, exist_ok=True)
+    path = ctx.output_dir / filename
     lines = [f"# {title}", ""]
     for s in sections:
         lines.append(f"## {s['heading']}")
