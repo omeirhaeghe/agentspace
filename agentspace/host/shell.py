@@ -750,7 +750,10 @@ class Shell:
         self._stop.set()
         running = self.sup.running_agents()
         if running:
-            ans = input(f"stop running agents ({', '.join(running)})? [y/N] ").strip().lower()
+            try:
+                ans = input(f"stop running agents ({', '.join(running)})? [y/N] ").strip().lower()
+            except EOFError:
+                ans = "n"
             if ans == "y":
                 for name in running:
                     print(self.sup.stop(name)["message"])
@@ -772,7 +775,7 @@ class Shell:
         monitor = threading.Thread(target=self._monitor, daemon=True)
         monitor.start()
 
-        prompt_fn = _make_prompt()
+        prompt_fn = self._make_prompt()
         while True:
             try:
                 line = prompt_fn("agentspace> ")
@@ -784,24 +787,46 @@ class Shell:
                 break
         self._stop.set()
 
+    def _make_prompt(self):
+        """Pin a clean input area at the bottom of the terminal: a styled prompt with a
+        status toolbar, and `patch_stdout` so all streaming output scrolls ABOVE it
+        instead of mixing with what you're typing. Falls back to input() if prompt_toolkit
+        isn't available / not a TTY."""
+        try:
+            from prompt_toolkit import PromptSession
+            from prompt_toolkit.formatted_text import HTML
+            from prompt_toolkit.history import InMemoryHistory
+            from prompt_toolkit.patch_stdout import patch_stdout
+            from prompt_toolkit.styles import Style
 
-def _make_prompt():
-    """Use prompt_toolkit (with patch_stdout so background status prints cleanly
-    above the prompt) if available/interactive, else plain input()."""
-    try:
-        from prompt_toolkit import PromptSession
-        from prompt_toolkit.history import InMemoryHistory
-        from prompt_toolkit.patch_stdout import patch_stdout
+            style = Style.from_dict({
+                "prompt": "ansigreen bold",
+                "bottom-toolbar": "bg:#10302a #9bd9b0",
+            })
 
-        session = PromptSession(history=InMemoryHistory())
+            def toolbar():
+                with self._active_lock:
+                    n = len(self._active)
+                busy = f" · {n} in-flight" if n else ""
+                key = "" if os.environ.get("ANTHROPIC_API_KEY") else " · ⚠ no API key"
+                return HTML(
+                    f" AgentSpace   plain text → conductor   ·   /help  ·  /list  ·  /quit{busy}{key} "
+                )
 
-        def fn(msg):
-            with patch_stdout():
-                return session.prompt(msg)
+            session = PromptSession(
+                history=InMemoryHistory(),
+                style=style,
+                bottom_toolbar=toolbar,
+                refresh_interval=0.5,
+            )
 
-        return fn
-    except Exception:  # noqa: BLE001
-        return input
+            def fn(_msg=None):
+                with patch_stdout():
+                    return session.prompt(HTML("<prompt>agentspace ❯</prompt> "))
+
+            return fn
+        except Exception:  # noqa: BLE001
+            return input
 
 
 def main() -> None:

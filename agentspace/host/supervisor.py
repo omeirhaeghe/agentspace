@@ -261,8 +261,13 @@ class Supervisor:
         return "\n".join(lines[-n:])
 
     def running_agents(self) -> list[str]:
+        """Local agent processes the host can stop (remote ones are skipped — they're
+        managed via /deploy / /undeploy, and probing them would be slow)."""
         out = []
         for spec in registry.list_agents(self.root):
-            if self.is_running(spec.name):
+            if self.remote(spec.name):
+                continue
+            pid = self.pid(spec.name)
+            if pid and self._alive(pid):
                 out.append(spec.name)
         return out
