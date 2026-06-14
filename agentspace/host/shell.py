@@ -63,6 +63,7 @@ Commands start with "/" (anything without a slash goes to the conductor):
                                 send a message (async: returns a run id immediately;
                                 --wait blocks until done). Status streams live.
   /status                       show in-flight runs being tracked
+  /stream [on|off]              toggle inline event streaming (off = clean REPL; use the monitor)
   /runs <name>                  list an agent's recent runs
   /logs <name> [n]              show the last n log lines (default 40)
   /sessions <name>              list an agent's sessions
@@ -94,6 +95,7 @@ class Shell:
         self._active: dict[str, dict] = {}
         self._active_lock = threading.Lock()
         self._stop = threading.Event()
+        self._stream = True  # inline interim event streaming in the REPL
 
     def _apply_settings(self) -> None:
         """Make the loaded settings take effect (conductor model + PI env)."""
@@ -144,11 +146,12 @@ class Shell:
                     continue
                 run = res["data"]
                 events = run.get("events", [])
-                for ev in events[info["seen"]:]:
-                    if ev["kind"] == "done":
-                        continue
-                    icon = _ICONS.get(ev["kind"], "·")
-                    print(f"  [{info['name']}·{run_id}] {icon} {ev['text']}")
+                if self._stream:
+                    for ev in events[info["seen"]:]:
+                        if ev["kind"] == "done":
+                            continue
+                        icon = _ICONS.get(ev["kind"], "·")
+                        print(f"  [{info['name']}·{run_id}] {icon} {ev['text']}")
                 info["seen"] = len(events)
                 if run["status"] in ("done", "error"):
                     if run.get("result"):
@@ -212,6 +215,15 @@ class Shell:
         run_id = data["run_id"]
         self._track(name, run_id, data["session_id"])
         print(f"→ {name} run {run_id} started (session {data['session_id']}). status streams below.")
+
+    def cmd_stream(self, args):
+        if args and args[0].lower() in ("on", "off"):
+            self._stream = args[0].lower() == "on"
+        else:
+            self._stream = not self._stream
+        state = "on" if self._stream else "off"
+        extra = "" if self._stream else " — use `agentspace-monitor` for per-agent panes"
+        print(f"inline streaming: {state}{extra}")
 
     def cmd_status(self, args):
         with self._active_lock:
@@ -734,6 +746,7 @@ class Shell:
             "restart": self.cmd_restart,
             "send": self.cmd_send,
             "status": self.cmd_status,
+            "stream": self.cmd_stream,
             "runs": self.cmd_runs,
             "logs": self.cmd_logs,
             "sessions": self.cmd_sessions,

@@ -140,10 +140,11 @@ it's done. Fire several agents and watch them interleave. Long-running tools str
 interim progress too — `write_tool` reports each of PI's steps (`✎ pi: writing
 create_document.py …`) instead of going dark for minutes.
 
-**A separate monitor console.** Run `agentspace-monitor` in a second terminal for a
-unified, timestamped, color-coded feed of *everything* across all agents — every model
-turn, tool call, PI authoring step, and final reply. Read-only; great for watching an
-orchestration unfold while you keep typing in the main shell.
+**Per-agent dashboard.** Run `agentspace-monitor` in a second terminal: each running agent
+gets its **own boxed pane** that streams only its output — so multiple agents never
+interleave. Read-only; great for watching an orchestration unfold while the main shell
+stays your clean input area. (Prefer one window? `/stream off` silences the inline event
+feed in the REPL and you watch the dashboard instead.)
 
 **Self-extending (the fun part).** The system can grow itself, at two levels, both via
 the [PI](https://github.com/badlogic/pi-mono) coding agent:
@@ -209,6 +210,7 @@ Commands start with `/`. Anything without a slash is a natural-language goal for
 | `/start` / `/stop` / `/restart <name>` | manage agent processes |
 | `/send <name> "<msg>" [--session <id>] [--wait]` | send a message (async; `--wait` blocks) |
 | `/status` / `/runs <name>` | in-flight runs / run history |
+| `/stream [on\|off]` | toggle the inline event feed (off = clean REPL; use the monitor) |
 | `/logs <name> [n]` | tail an agent's log |
 | `/sessions <name>` / `/session <name> <id>` | list / inspect sessions |
 | `/help` / `/quit` | help / exit |
