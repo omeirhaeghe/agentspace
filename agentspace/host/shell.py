@@ -64,6 +64,7 @@ Commands start with "/" (anything without a slash goes to the conductor):
                                 --wait blocks until done). Status streams live.
   /status                       show in-flight runs being tracked
   /stream [on|off]              toggle inline event streaming (off = clean REPL; use the monitor)
+  /gc                           sweep orphan agent processes left by a previous host session
   /runs <name>                  list an agent's recent runs
   /logs <name> [n]              show the last n log lines (default 40)
   /sessions <name>              list an agent's sessions
@@ -215,6 +216,10 @@ class Shell:
         run_id = data["run_id"]
         self._track(name, run_id, data["session_id"])
         print(f"→ {name} run {run_id} started (session {data['session_id']}). status streams below.")
+
+    def cmd_gc(self, args):
+        reaped = self.sup.reap_orphans()
+        print(f"swept {len(reaped)} orphan agent process(es)." if reaped else "no orphan processes found.")
 
     def cmd_stream(self, args):
         if args and args[0].lower() in ("on", "off"):
@@ -747,6 +752,7 @@ class Shell:
             "send": self.cmd_send,
             "status": self.cmd_status,
             "stream": self.cmd_stream,
+            "gc": self.cmd_gc,
             "runs": self.cmd_runs,
             "logs": self.cmd_logs,
             "sessions": self.cmd_sessions,
@@ -775,6 +781,9 @@ class Shell:
 
     def run(self) -> None:
         print(BANNER)
+        reaped = self.sup.reap_orphans()
+        if reaped:
+            print(f"swept {len(reaped)} orphan agent process(es) from a previous session.")
         if settings_mod.is_first_run(self.root):
             self.run_setup(initial=True)
         elif not os.environ.get("ANTHROPIC_API_KEY"):

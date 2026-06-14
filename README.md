@@ -211,6 +211,7 @@ Commands start with `/`. Anything without a slash is a natural-language goal for
 | `/send <name> "<msg>" [--session <id>] [--wait]` | send a message (async; `--wait` blocks) |
 | `/status` / `/runs <name>` | in-flight runs / run history |
 | `/stream [on\|off]` | toggle the inline event feed (off = clean REPL; use the monitor) |
+| `/gc` | sweep orphan agent processes left by a previous host session (also runs at startup) |
 | `/logs <name> [n]` | tail an agent's log |
 | `/sessions <name>` / `/session <name> <id>` | list / inspect sessions |
 | `/help` / `/quit` | help / exit |

@@ -260,6 +260,42 @@ class Supervisor:
         lines = path.read_text().splitlines()
         return "\n".join(lines[-n:])
 
+    def reap_orphans(self) -> list[int]:
+        """Kill leftover `agentspace.agent` processes that no current pid file tracks
+        (e.g. duplicates left by restarting the host without stopping agents). Adopted
+        agents — those still referenced by a live runtime/<name>/pid — are spared."""
+        tracked = set()
+        rt = paths.runtime_dir(self.root)
+        if rt.is_dir():
+            for d in rt.iterdir():
+                val = self._read_int(d / "pid") if (d / "pid").exists() else None
+                if val:
+                    tracked.add(val)
+        try:
+            out = subprocess.run(
+                ["ps", "-A", "-ww", "-o", "pid=,command="],
+                capture_output=True, text=True, timeout=5,
+            ).stdout
+        except Exception:  # noqa: BLE001
+            return []
+        killed = []
+        for ln in out.splitlines():
+            if "agentspace.agent" not in ln and "agentspace-serve" not in ln:
+                continue
+            parts = ln.strip().split(None, 1)
+            try:
+                pid = int(parts[0])
+            except (ValueError, IndexError):
+                continue
+            if pid in tracked or pid == os.getpid():
+                continue
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed.append(pid)
+            except OSError:
+                pass
+        return killed
+
     def running_agents(self) -> list[str]:
         """Local agent processes the host can stop (remote ones are skipped — they're
         managed via /deploy / /undeploy, and probing them would be slow)."""
