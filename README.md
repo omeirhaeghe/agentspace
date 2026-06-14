@@ -185,7 +185,9 @@ export AGENTSPACE_CONDUCTOR_MODEL=claude-opus-4-8
 export AGENTSPACE_PI_MODEL=claude-sonnet-4-6
 ```
 
-`/ps` shows each agent's current model; the per-turn reply footer reports token usage.
+`/ps` shows each agent's current model; the reply footer reports token usage **and an
+estimated $ cost** per run (conductor goals show a combined total). Rates live in
+`agentspace/common/pricing.py` — they're estimates; tweak to match your plan.
 The prompt keeps a **persistent history** (`runtime/history`): press ↑ to recall past
 commands and goals across sessions, and accept the greyed autosuggestion with →.
 On first launch a quick **setup** flow walks you through the API key, a default model, and

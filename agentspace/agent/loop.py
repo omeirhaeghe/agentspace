@@ -168,6 +168,7 @@ class Agent:
         return {
             "id": "resp_" + uuid.uuid4().hex[:12],
             "session_id": session_id,
+            "model": self.spec.model,
             "output_text": _text_of(final),
             "output": final,
             "usage": usage,
@@ -197,6 +198,7 @@ class Agent:
         return {
             "id": "resp_" + uuid.uuid4().hex[:12],
             "session_id": session_id or "",
+            "model": self.spec.model,
             "output_text": f"ERROR: {message}",
             "output": [{"type": "text", "text": f"ERROR: {message}"}],
             "usage": usage or {},

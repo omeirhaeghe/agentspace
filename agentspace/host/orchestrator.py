@@ -20,6 +20,7 @@ import os
 import time
 from pathlib import Path
 
+from agentspace.common import pricing
 from agentspace.host import agent_factory, registry
 
 CONDUCTOR_PROMPT = """\
@@ -96,6 +97,7 @@ class Orchestrator:
         self.sup = supervisor
         self.model = os.environ.get("AGENTSPACE_CONDUCTOR_MODEL", "claude-sonnet-4-6")
         self._client = None
+        self.last_cost = 0.0  # estimated $ for the most recent goal (conductor + delegations)
 
     def _get_client(self):
         if self._client is None:
@@ -151,7 +153,12 @@ class Orchestrator:
                     emit("subevent", f"[{agent}] {ev['text'][:90]}")
             seen = len(run["events"])
             if run["status"] in ("done", "error"):
-                out = (run.get("result") or {}).get("output_text", "")
+                result = run.get("result") or {}
+                u = result.get("usage", {})
+                self.last_cost += pricing.estimate_cost(
+                    result.get("model", ""), u.get("input_tokens", 0), u.get("output_tokens", 0)
+                )
+                out = result.get("output_text", "")
                 emit("reply", f"{agent} → {out[:120]}")
                 return out or "(no output)"
             time.sleep(0.5)
@@ -163,6 +170,7 @@ class Orchestrator:
             emit("error", "ANTHROPIC_API_KEY is not set — the conductor needs it to plan.")
             return None
 
+        self.last_cost = 0.0
         roster = json.dumps(self._roster(), indent=2)
         system = CONDUCTOR_PROMPT + "\n\nCurrent agent roster:\n" + roster
         messages = [{"role": "user", "content": goal}]
@@ -175,6 +183,9 @@ class Orchestrator:
                     system=system,
                     messages=messages,
                     tools=TOOLS,
+                )
+                self.last_cost += pricing.estimate_cost(
+                    self.model, resp.usage.input_tokens, resp.usage.output_tokens
                 )
                 messages.append(
                     {"role": "assistant", "content": [b.model_dump() for b in resp.content]}

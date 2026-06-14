@@ -21,6 +21,7 @@ from pathlib import Path
 
 from agentspace.agent.mcp_client import load_catalog
 from agentspace.agent.tools import registry as tool_registry
+from agentspace.common import pricing
 from agentspace.agent.tools.skills import skill_description
 from agentspace.common import paths
 from agentspace.host import agent_factory, deploy, registry
@@ -130,10 +131,14 @@ class Shell:
     def _print_final(self, name: str, data: dict) -> None:
         print(f"\n{name}> {data.get('output_text', '')}\n")
         u = data.get("usage", {})
+        cost = pricing.estimate_cost(
+            data.get("model", ""), u.get("input_tokens", 0), u.get("output_tokens", 0)
+        )
         print(
             f"  [session {data.get('session_id', '?')} · {u.get('iterations', '?')} turns · "
             f"{u.get('tool_calls', 0)} tool calls · "
-            f"{u.get('input_tokens', 0)}in/{u.get('output_tokens', 0)}out tokens]"
+            f"{u.get('input_tokens', 0)}in/{u.get('output_tokens', 0)}out tok · "
+            f"~{pricing.fmt(cost)} ({data.get('model', '?')})]"
         )
 
     # -- live status monitor -------------------------------------------------
@@ -631,7 +636,8 @@ class Shell:
             print(f"🧭 conductor: {goal}")
             final = self.orch.run(goal, emit)
             if final:
-                print(f"\nconductor> {final}\n")
+                print(f"\nconductor> {final}")
+                print(f"  [≈ {pricing.fmt(self.orch.last_cost)} for this goal (conductor + delegations)]\n")
 
         threading.Thread(target=work, daemon=True).start()
 
