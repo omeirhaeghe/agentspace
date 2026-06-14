@@ -24,6 +24,7 @@ from agentspace.agent.tools import registry as tool_registry
 from agentspace.agent.tools.skills import skill_description
 from agentspace.common import paths
 from agentspace.host import agent_factory, registry
+from agentspace.host import settings as settings_mod
 from agentspace.host.orchestrator import Orchestrator
 from agentspace.host.supervisor import Supervisor
 
@@ -42,6 +43,8 @@ Just type a goal in plain English — the conductor routes it to the right agent
 
 Commands start with "/" (anything without a slash goes to the conductor):
   /list                         plain-English overview of every agent, tool & skill
+  /settings [...]               show/change models live (agents, conductor, pi, key)
+  /setup                        re-run the first-time setup flow
   /mcp                          list MCP servers and live connection status
   /agents                       list agents and what each is for
   /create-agent <description>   have PI build a new agent and add it to the registry
@@ -82,10 +85,21 @@ class Shell:
         self.root = root
         self.sup = Supervisor(root)
         self.orch = Orchestrator(root, self.sup)
+        self.settings = settings_mod.load(root)
+        self._apply_settings()
         # run_id -> {name, seen, session_id}
         self._active: dict[str, dict] = {}
         self._active_lock = threading.Lock()
         self._stop = threading.Event()
+
+    def _apply_settings(self) -> None:
+        """Make the loaded settings take effect (conductor model + PI env)."""
+        self.orch.model = self.settings.conductor_model
+        os.environ["AGENTSPACE_PI_PROVIDER"] = self.settings.pi_provider
+        if self.settings.pi_model:
+            os.environ["AGENTSPACE_PI_MODEL"] = self.settings.pi_model
+        else:
+            os.environ.pop("AGENTSPACE_PI_MODEL", None)
 
     # -- helpers -------------------------------------------------------------
     def _agents(self):
@@ -254,6 +268,127 @@ class Shell:
 
         print("\nThe system extends itself: agents author new tools with write_tool, "
               "and you can spin up new agents with /create-agent.\n")
+
+    # -- settings & setup ----------------------------------------------------
+    def _set_agent_model(self, name: str, model: str) -> str:
+        cfg = registry.config_path(self.root, name)
+        if not cfg.is_file():
+            return f"no such agent: {name}"
+        lines = cfg.read_text().splitlines()
+        for i, line in enumerate(lines):
+            if line.lstrip().startswith("model:"):
+                indent = line[: len(line) - len(line.lstrip())]
+                lines[i] = f"{indent}model: {model}"
+                break
+        else:
+            lines.insert(1, f"model: {model}")
+        cfg.write_text("\n".join(lines) + "\n")
+        msg = f"{name} → {model}"
+        if self.sup.is_running(name):
+            self.sup.restart(name)
+            msg += " (restarted)"
+        return msg
+
+    def _show_settings(self) -> None:
+        key = "set" if os.environ.get("ANTHROPIC_API_KEY") else "NOT set"
+        pim = self.settings.pi_model or "(PI default)"
+        print(f"\nAPI key:           {key}")
+        print(f"conductor model:   {self.settings.conductor_model}")
+        print(f"pi provider/model: {self.settings.pi_provider} / {pim}")
+        print("\nagent models:")
+        for spec in self._agents():
+            state = "running" if self.sup.is_running(spec.name) else "stopped"
+            print(f"  {spec.name:<18}{spec.model:<22}({state})")
+        print("\nchange live: /settings model <agent|all> <model> · "
+              "/settings conductor <model> · /settings pi <model>")
+        print("models: opus | sonnet | haiku  (or a full id)\n")
+
+    def cmd_settings(self, args):
+        if not args:
+            self._show_settings()
+            return
+        sub = args[0].lower()
+        if sub == "model":
+            if len(args) < 3:
+                print("usage: /settings model <agent|all> <model>")
+                return
+            model = settings_mod.resolve_model(args[2])
+            targets = [s.name for s in self._agents()] if args[1] == "all" else [args[1]]
+            for name in targets:
+                print("  " + self._set_agent_model(name, model))
+        elif sub == "conductor":
+            if len(args) < 2:
+                print("usage: /settings conductor <model>")
+                return
+            self.settings.conductor_model = settings_mod.resolve_model(args[1])
+            settings_mod.save(self.root, self.settings)
+            self._apply_settings()
+            print(f"conductor model → {self.settings.conductor_model}")
+        elif sub == "pi":
+            if len(args) < 2:
+                print("usage: /settings pi <model>")
+                return
+            self.settings.pi_model = settings_mod.resolve_model(args[1])
+            settings_mod.save(self.root, self.settings)
+            self._apply_settings()
+            print(f"pi model → {self.settings.pi_model}")
+        elif sub == "key":
+            if len(args) < 2:
+                print("usage: /settings key <api-key>")
+                return
+            os.environ["ANTHROPIC_API_KEY"] = args[1]
+            print("ANTHROPIC_API_KEY set for this session (not persisted — add to your shell profile to keep it).")
+        else:
+            print("usage: /settings [model <agent|all> <model> | conductor <model> | pi <model> | key <api-key>]")
+
+    def cmd_setup(self, args=None):
+        self.run_setup(initial=False)
+
+    def run_setup(self, initial: bool = False) -> None:
+        print("\n— AgentSpace setup —")
+        if initial:
+            print("Looks like your first run! Quick setup (re-run anytime with /setup).\n")
+
+        # 1) API key
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            print("✓ ANTHROPIC_API_KEY detected.")
+        else:
+            print("Agents call the Anthropic Messages API, so they need an API key.")
+            v = input("  paste ANTHROPIC_API_KEY now (or Enter to skip): ").strip()
+            if v:
+                os.environ["ANTHROPIC_API_KEY"] = v
+                print("  ✓ set for this session. To keep it, add it to your ~/.zprofile.")
+            else:
+                print("  skipped — the conductor and /send will error until it's set.")
+
+        # 2) default model
+        print("\nPick a default model:")
+        print("  1) sonnet  (claude-sonnet-4-6) — balanced [default]")
+        print("  2) opus    (claude-opus-4-8)   — most capable")
+        print("  3) haiku   (claude-haiku-4-5)  — fastest / cheapest")
+        print("  4) keep current")
+        pick = {"1": "sonnet", "2": "opus", "3": "haiku"}.get(input("  > ").strip())
+        if pick:
+            model = settings_mod.resolve_model(pick)
+            self.settings.conductor_model = model
+            if input(f"  apply {model} to ALL agents too? [y/N] ").strip().lower() == "y":
+                for spec in self._agents():
+                    self._set_agent_model(spec.name, model)
+                print(f"  ✓ all agents → {model}")
+            print(f"  ✓ conductor → {model}")
+
+        # 3) optional capabilities
+        def mark(ok, hint):
+            return "✓ installed" if ok else f"✗ missing — {hint}"
+
+        print("\nOptional capabilities:")
+        print(f"  pi  (write_tool / create-agent): {mark(shutil.which('pi'), 'npm i -g @mariozechner/pi-coding-agent')}")
+        print(f"  npx (filesystem/github MCP):     {mark(shutil.which('npx'), 'install Node.js')}")
+        print(f"  uvx (fetch/git MCP):             {mark(shutil.which('uvx'), 'install uv')}")
+
+        settings_mod.save(self.root, self.settings)
+        self._apply_settings()
+        print("\nsetup saved. type /help for commands, or just say what you want.\n")
 
     def cmd_mcp(self, args):
         catalog = load_catalog(self.root)
@@ -545,6 +680,8 @@ class Shell:
         cmd, args = parts[0].lower(), parts[1:]
         handlers = {
             "list": self.cmd_list,
+            "settings": self.cmd_settings,
+            "setup": self.cmd_setup,
             "mcp": self.cmd_mcp,
             "clean": self.cmd_clean,
             "trash": self.cmd_trash,
@@ -581,9 +718,11 @@ class Shell:
 
     def run(self) -> None:
         print(BANNER)
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            print("⚠️  ANTHROPIC_API_KEY is not set — agents will start but the conductor and `/send` will error.")
-            print("    export ANTHROPIC_API_KEY=sk-ant-... then restart the host.\n")
+        if settings_mod.is_first_run(self.root):
+            self.run_setup(initial=True)
+        elif not os.environ.get("ANTHROPIC_API_KEY"):
+            print("⚠️  ANTHROPIC_API_KEY is not set — the conductor and `/send` will error.")
+            print("    set it with `/settings key <key>` or re-run `/setup`.\n")
         print(f"root: {self.root}")
         print("type a goal in plain English (the conductor routes it). commands start with / — try /list or /help.\n")
         self._print_ps()

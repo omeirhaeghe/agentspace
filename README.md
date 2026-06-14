@@ -177,6 +177,9 @@ export AGENTSPACE_PI_MODEL=claude-sonnet-4-6
 ```
 
 `/ps` shows each agent's current model; the per-turn reply footer reports token usage.
+On first launch a quick **setup** flow walks you through the API key, a default model, and
+optional prerequisites — re-run it anytime with `/setup`, or tweak models live with
+`/settings` (e.g. `/settings model coder opus`, `/settings conductor haiku`).
 
 ## Shell commands
 
@@ -186,6 +189,8 @@ Commands start with `/`. Anything without a slash is a natural-language goal for
 |---|---|
 | *(plain English)* | hand a goal to the conductor — it picks & orchestrates agents |
 | `/list` | plain-English overview of every agent, tool & skill you have |
+| `/settings [...]` | show/change models live (agents, conductor, PI) + set the API key |
+| `/setup` | re-run the first-time setup flow |
 | `/mcp` | list MCP servers and live connection status |
 | `/agents` | list agents and what each is for |
 | `/create-agent <description>` | have PI build a new agent and add it to the registry |
