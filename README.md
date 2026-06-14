@@ -7,6 +7,11 @@
   Talk to it in plain English; it orchestrates agents, and <i>writes new tools and whole agents for itself</i> — all from a hand-written, hackable loop (no agent framework).
 </p>
 
+<p align="center">
+  <img src="docs/demo.svg" alt="AgentSpace — natural-language orchestration demo" width="760">
+  <br><sub><i>Illustrative walkthrough: one plain-English goal → the conductor routes research → deck-building.</i></sub>
+</p>
+
 ---
 
 ## ✨ Highlights
