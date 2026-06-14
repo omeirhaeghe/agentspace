@@ -7,6 +7,8 @@ agentspace/agent/tools/generated/*.py
 # artifacts produced by agents/tools
 output/
 documents/
+*.pptx
+*.docx
 
 # python
 __pycache__/
