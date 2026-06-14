@@ -29,7 +29,7 @@ line("type a goal in plain English (the conductor routes it). commands start wit
 line()
 
 # the goal
-w(f"{G}{B}agentspace>{R} ")
+w(f"{G}{B}agentspace ❯{R} ")
 typ("research france's odds of winning the world cup and make a slide deck")
 line("", 0.5)
 
@@ -52,5 +52,5 @@ line(f"{G}{B}conductor>{R} {W}Done — France sit around +450 (~18% implied) to 
 line(f"{W}among the favorites. I built a 6-slide deck at output/france_wc_odds.pptx —{R}", 0.25)
 line(f"{W}odds, key players, and risks, with sources cited.{R}", 0.8)
 line()
-w(f"{G}{B}agentspace>{R} ")
+w(f"{G}{B}agentspace ❯{R} ")
 time.sleep(1.6)
