@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
 import sys
 import threading
 import time
@@ -42,6 +43,8 @@ Commands start with "/" (anything without a slash goes to the conductor):
   /list                         plain-English overview of every agent, tool & skill
   /agents                       list agents and what each is for
   /create-agent <description>   have PI build a new agent and add it to the registry
+  /clean [output|tools|sessions|all]
+                                delete agent-produced files (default: output/)
   /ps | /ls                     agent status table (running/stopped, port, pid)
   /start <name>                 start an agent process
   /stop <name>                  stop an agent process
@@ -247,6 +250,55 @@ class Shell:
         for spec in agents:
             print(f"{spec.name:<14}{spec.description or '(no description)'}")
 
+    def _clean_output(self) -> str:
+        d = paths.output_dir(self.root)
+        if not d.exists():
+            return "output/: nothing to clean"
+        n = sum(1 for p in d.rglob("*") if p.is_file())
+        shutil.rmtree(d)
+        return f"output/: removed {n} file(s)"
+
+    def _clean_tools(self) -> str:
+        d = paths.generated_tools_dir()
+        removed = 0
+        for p in d.glob("*.py"):
+            if p.name == "__init__.py":
+                continue
+            p.unlink()
+            removed += 1
+        pycache = d / "__pycache__"
+        if pycache.exists():
+            shutil.rmtree(pycache)
+        return f"generated tools: removed {removed} tool(s)"
+
+    def _clean_sessions(self) -> str:
+        removed = 0
+        for spec in self._agents():
+            sdir = paths.agent_runtime_dir(self.root, spec.name) / "sessions"
+            if sdir.exists():
+                for p in sdir.glob("*.json"):
+                    p.unlink()
+                    removed += 1
+        return f"sessions: removed {removed} session file(s)"
+
+    def cmd_clean(self, args):
+        target = (args[0].lower() if args else "output")
+        if target not in ("output", "tools", "sessions", "all"):
+            print("usage: /clean [output|tools|sessions|all]   (default: output)")
+            return
+        # Sessions are real conversation history — confirm before deleting.
+        if target in ("sessions", "all"):
+            what = "all session history" if target == "sessions" else "output, generated tools, AND all session history"
+            if input(f"this permanently deletes {what}. proceed? [y/N] ").strip().lower() != "y":
+                print("cancelled.")
+                return
+        if target in ("output", "all"):
+            print(self._clean_output())
+        if target in ("tools", "all"):
+            print(self._clean_tools())
+        if target in ("sessions", "all"):
+            print(self._clean_sessions())
+
     def cmd_create_agent(self, description: str):
         """Have PI design a new agent from a description (runs in the background)."""
         description = description.strip()
@@ -384,6 +436,7 @@ class Shell:
         cmd, args = parts[0].lower(), parts[1:]
         handlers = {
             "list": self.cmd_list,
+            "clean": self.cmd_clean,
             "agents": self.cmd_agents,
             "ps": lambda a: self._print_ps(),
             "ls": lambda a: self._print_ps(),
