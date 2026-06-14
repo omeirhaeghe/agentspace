@@ -44,7 +44,9 @@ Commands start with "/" (anything without a slash goes to the conductor):
   /agents                       list agents and what each is for
   /create-agent <description>   have PI build a new agent and add it to the registry
   /clean [output|tools|sessions|all]
-                                delete agent-produced files (default: output/)
+                                move agent-produced files to trash (default: output/)
+  /trash [list|restore [batch]|empty]
+                                inspect / undo / purge what /clean moved aside
   /ps | /ls                     agent status table (running/stopped, port, pid)
   /start <name>                 start an agent process
   /stop <name>                  stop an agent process
@@ -250,54 +252,127 @@ class Shell:
         for spec in agents:
             print(f"{spec.name:<14}{spec.description or '(no description)'}")
 
-    def _clean_output(self) -> str:
-        d = paths.output_dir(self.root)
-        if not d.exists():
-            return "output/: nothing to clean"
-        n = sum(1 for p in d.rglob("*") if p.is_file())
-        shutil.rmtree(d)
-        return f"output/: removed {n} file(s)"
+    def _trash_root(self) -> Path:
+        return paths.runtime_dir(self.root) / ".trash"
 
-    def _clean_tools(self) -> str:
+    def _new_trash_batch(self) -> Path:
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        base = self._trash_root() / ts
+        d, i = base, 2
+        while d.exists():
+            d = self._trash_root() / f"{ts}-{i}"
+            i += 1
+        return d
+
+    def _clean_output(self, trash: Path) -> tuple[str, int]:
+        d = paths.output_dir(self.root)
+        files = [p for p in d.rglob("*") if p.is_file()] if d.exists() else []
+        if not files:
+            return "output/: nothing to clean", 0
+        dest = trash / "output"
+        dest.mkdir(parents=True, exist_ok=True)
+        for p in d.iterdir():
+            shutil.move(str(p), str(dest / p.name))
+        return f"output/: moved {len(files)} file(s) to trash", len(files)
+
+    def _clean_tools(self, trash: Path) -> tuple[str, int]:
         d = paths.generated_tools_dir()
-        removed = 0
-        for p in d.glob("*.py"):
-            if p.name == "__init__.py":
-                continue
-            p.unlink()
-            removed += 1
+        tools = [p for p in d.glob("*.py") if p.name != "__init__.py"]
         pycache = d / "__pycache__"
         if pycache.exists():
             shutil.rmtree(pycache)
-        return f"generated tools: removed {removed} tool(s)"
+        if not tools:
+            return "generated tools: nothing to clean", 0
+        dest = trash / "tools"
+        dest.mkdir(parents=True, exist_ok=True)
+        for p in tools:
+            shutil.move(str(p), str(dest / p.name))
+        return f"generated tools: moved {len(tools)} to trash", len(tools)
 
-    def _clean_sessions(self) -> str:
-        removed = 0
+    def _clean_sessions(self, trash: Path) -> tuple[str, int]:
+        moved = 0
         for spec in self._agents():
             sdir = paths.agent_runtime_dir(self.root, spec.name) / "sessions"
-            if sdir.exists():
-                for p in sdir.glob("*.json"):
-                    p.unlink()
-                    removed += 1
-        return f"sessions: removed {removed} session file(s)"
+            for p in sdir.glob("*.json") if sdir.exists() else []:
+                dest = trash / "sessions" / spec.name
+                dest.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(p), str(dest / p.name))
+                moved += 1
+        return f"sessions: moved {moved} to trash" if moved else "sessions: nothing to clean", moved
 
     def cmd_clean(self, args):
         target = (args[0].lower() if args else "output")
         if target not in ("output", "tools", "sessions", "all"):
             print("usage: /clean [output|tools|sessions|all]   (default: output)")
             return
-        # Sessions are real conversation history — confirm before deleting.
-        if target in ("sessions", "all"):
-            what = "all session history" if target == "sessions" else "output, generated tools, AND all session history"
-            if input(f"this permanently deletes {what}. proceed? [y/N] ").strip().lower() != "y":
-                print("cancelled.")
-                return
+        trash = self._new_trash_batch()
+        trash.mkdir(parents=True, exist_ok=True)
+        total = 0
         if target in ("output", "all"):
-            print(self._clean_output())
+            msg, n = self._clean_output(trash); total += n; print(msg)
         if target in ("tools", "all"):
-            print(self._clean_tools())
+            msg, n = self._clean_tools(trash); total += n; print(msg)
         if target in ("sessions", "all"):
-            print(self._clean_sessions())
+            msg, n = self._clean_sessions(trash); total += n; print(msg)
+        if total == 0:
+            shutil.rmtree(trash, ignore_errors=True)
+        else:
+            print(f"→ moved to trash batch '{trash.name}'. "
+                  f"restore with /trash restore, or purge with /trash empty.")
+
+    def cmd_trash(self, args):
+        sub = (args[0].lower() if args else "list")
+        troot = self._trash_root()
+        batches = sorted(p for p in troot.iterdir() if p.is_dir()) if troot.exists() else []
+
+        if sub == "list":
+            if not batches:
+                print("trash is empty.")
+                return
+            for b in batches:
+                n = sum(1 for p in b.rglob("*") if p.is_file())
+                print(f"  {b.name}  ({n} file(s))")
+            print("restore latest with /trash restore [batch]; purge all with /trash empty")
+        elif sub == "empty":
+            if troot.exists():
+                shutil.rmtree(troot)
+            print("trash emptied.")
+        elif sub == "restore":
+            if not batches:
+                print("trash is empty — nothing to restore.")
+                return
+            name = args[1] if len(args) > 1 else batches[-1].name
+            batch = troot / name
+            if not batch.is_dir():
+                print(f"no such trash batch: {name}")
+                return
+            print(self._restore_batch(batch))
+        else:
+            print("usage: /trash [list|restore [batch]|empty]")
+
+    def _restore_batch(self, batch: Path) -> str:
+        restored = 0
+
+        def move_back(src: Path, dest: Path) -> int:
+            if not src.exists():
+                return 0
+            dest.mkdir(parents=True, exist_ok=True)
+            count = 0
+            for p in src.iterdir():
+                shutil.move(str(p), str(dest / p.name))
+                count += 1
+            return count
+
+        restored += move_back(batch / "output", paths.output_dir(self.root))
+        restored += move_back(batch / "tools", paths.generated_tools_dir())
+        sess = batch / "sessions"
+        if sess.exists():
+            for agent_dir in sess.iterdir():
+                restored += move_back(
+                    agent_dir, paths.agent_runtime_dir(self.root, agent_dir.name) / "sessions"
+                )
+        shutil.rmtree(batch, ignore_errors=True)
+        return f"restored {restored} file(s) from '{batch.name}'."
 
     def cmd_create_agent(self, description: str):
         """Have PI design a new agent from a description (runs in the background)."""
@@ -437,6 +512,7 @@ class Shell:
         handlers = {
             "list": self.cmd_list,
             "clean": self.cmd_clean,
+            "trash": self.cmd_trash,
             "agents": self.cmd_agents,
             "ps": lambda a: self._print_ps(),
             "ls": lambda a: self._print_ps(),

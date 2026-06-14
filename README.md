@@ -153,7 +153,8 @@ Commands start with `/`. Anything without a slash is a natural-language goal for
 | `/list` | plain-English overview of every agent, tool & skill you have |
 | `/agents` | list agents and what each is for |
 | `/create-agent <description>` | have PI build a new agent and add it to the registry |
-| `/clean [output\|tools\|sessions\|all]` | delete agent-produced files (default: `output/`) |
+| `/clean [output\|tools\|sessions\|all]` | move agent-produced files to trash (default: `output/`) |
+| `/trash [list\|restore [batch]\|empty]` | inspect / undo / purge what `/clean` set aside |
 | `/ps` / `/ls` | agent status table (running/stopped, port, pid) |
 | `/start` / `/stop` / `/restart <name>` | manage agent processes |
 | `/send <name> "<msg>" [--session <id>] [--wait]` | send a message (async; `--wait` blocks) |
