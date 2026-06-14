@@ -18,6 +18,8 @@ import threading
 import time
 from pathlib import Path
 
+from agentspace.agent.tools import registry as tool_registry
+from agentspace.agent.tools.skills import skill_description
 from agentspace.common import paths
 from agentspace.host import agent_factory, registry
 from agentspace.host.orchestrator import Orchestrator
@@ -33,27 +35,26 @@ BANNER = r"""
 """
 
 HELP = """\
-Type a goal in plain English and the conductor routes it to the right agent(s):
+Just type a goal in plain English — the conductor routes it to the right agent(s):
   > research france's world cup odds and make a cool powerpoint about it
 
-commands:
-  agents                       list agents and what each is for
-  create-agent <description>   have PI build a new agent and add it to the registry
-  do <goal> | ask <goal>       explicitly send a goal to the conductor
-  ps | ls                      list agents and their status
-  start <name>                 start an agent process
-  stop <name>                  stop an agent process
-  restart <name>               restart an agent process
-  send <name> "<msg>" [--session <id>] [--wait]
-                               send a message (async: returns a run id immediately;
-                               --wait blocks until done). Status streams live.
-  status                       show in-flight runs being tracked
-  runs <name>                  list an agent's recent runs
-  logs <name> [n]              show the last n log lines (default 40)
-  sessions <name>              list an agent's sessions
-  session <name> <id>          print a session's messages (turn count)
-  help | ?                     show this help
-  quit | exit | q              leave (offers to stop running agents)
+Commands start with "/" (anything without a slash goes to the conductor):
+  /list                         plain-English overview of every agent, tool & skill
+  /agents                       list agents and what each is for
+  /create-agent <description>   have PI build a new agent and add it to the registry
+  /ps | /ls                     agent status table (running/stopped, port, pid)
+  /start <name>                 start an agent process
+  /stop <name>                  stop an agent process
+  /restart <name>               restart an agent process
+  /send <name> "<msg>" [--session <id>] [--wait]
+                                send a message (async: returns a run id immediately;
+                                --wait blocks until done). Status streams live.
+  /status                       show in-flight runs being tracked
+  /runs <name>                  list an agent's recent runs
+  /logs <name> [n]              show the last n log lines (default 40)
+  /sessions <name>              list an agent's sessions
+  /session <name> <id>          print a session's messages (turn count)
+  /help | /quit                 help / leave (quit offers to stop running agents)
 """
 
 # Icons for the live status feed, by event kind.
@@ -196,6 +197,48 @@ class Shell:
         for run_id, info in items:
             print(f"{run_id:<16}{info['name']:<14}{info['session_id']:<14}{info['seen']}")
 
+    @staticmethod
+    def _short(text: str, n: int = 100) -> str:
+        text = " ".join((text or "").split())
+        head = text.split(". ")[0]
+        return (head if len(head) <= n else text[:n]).rstrip(".") + ("…" if len(text) > n else "")
+
+    # Friendly blurbs for tools whose schema text is verbose or who have no handler.
+    _TOOL_BLURBS = {
+        "web_search": "search the web for current information (runs on Anthropic's side)",
+        "sh": "run shell commands on the host machine",
+        "load_skill": "pull in a skill's full instructions on demand",
+        "write_tool": "author a brand-new tool on the fly (PI writes it, then it's usable)",
+    }
+
+    def cmd_list(self, args=None):
+        agents = self._agents()
+        print(f"\nYou have {len(agents)} agent(s):")
+        for spec in agents:
+            state = "running" if self.sup.is_running(spec.name) else "stopped"
+            selfext = "  ·  can write its own tools" if spec.can_author_tools else ""
+            print(f"  • {spec.name}  ({state}) — {spec.description or 'no description'}")
+            print(f"      tools: {', '.join(spec.tools) or 'none'}{selfext}")
+
+        discovered = tool_registry.discover()
+        print("\nTools agents can use:")
+        print(f"  • web_search — {self._TOOL_BLURBS['web_search']}")
+        for name in sorted(discovered):
+            blurb = self._TOOL_BLURBS.get(name) or self._short(discovered[name].schema.get("description", ""))
+            tag = "  [PI-authored]" if discovered[name].generated else ""
+            print(f"  • {name} — {blurb}{tag}")
+
+        skills_dir = paths.skills_dir(self.root)
+        skills = sorted(p.name for p in skills_dir.iterdir() if (p / "SKILL.md").is_file()) \
+            if skills_dir.is_dir() else []
+        if skills:
+            print("\nSkills (playbooks loaded on demand):")
+            for s in skills:
+                print(f"  • {s} — {self._short(skill_description(skills_dir, s))}")
+
+        print("\nThe system extends itself: agents author new tools with write_tool, "
+              "and you can spin up new agents with /create-agent.\n")
+
     def cmd_agents(self, args):
         agents = self._agents()
         if not agents:
@@ -296,42 +339,51 @@ class Shell:
             print(f"  {role:<10} {str(preview)[:90]}")
 
     # -- loop ----------------------------------------------------------------
-    COMMANDS = {
-        "quit", "exit", "q", "help", "?", "ps", "ls", "start", "stop", "restart",
-        "send", "status", "runs", "logs", "sessions", "session", "agents", "do", "ask",
-        "create-agent",
-    }
-
     def dispatch(self, line: str) -> bool:
-        """Run one command. Returns False to exit. Free text → the conductor."""
+        """Run one line. Commands start with '/'; everything else is a natural-language
+        goal handed to the conductor. Returns False to exit."""
         line = line.strip()
         if not line:
             return True
 
-        first = line.split()[0]
-        # Anything that isn't a known command is a natural-language goal.
-        if first not in self.COMMANDS:
+        # Bare safety words work without a slash (so a habitual `quit` doesn't hit the LLM).
+        if line.lower() in ("quit", "exit", "q"):
+            return self._quit()
+        if line.lower() in ("help", "?"):
+            print(HELP)
+            return True
+
+        # No slash → talk to the conductor.
+        if not line.startswith("/"):
             self.cmd_orchestrate(line)
             return True
-        if first in ("do", "ask"):
-            self.cmd_orchestrate(line[len(first):])
+
+        body = line[1:].strip()
+        if not body:
             return True
+        first = body.split()[0].lower()
+
+        if first in ("quit", "exit", "q"):
+            return self._quit()
+        if first in ("help", "?"):
+            print(HELP)
+            return True
+        # Commands whose argument is free text (keep it unparsed).
         if first == "create-agent":
-            self.cmd_create_agent(line[len("create-agent"):])
+            self.cmd_create_agent(body[len("create-agent"):])
+            return True
+        if first in ("do", "ask"):
+            self.cmd_orchestrate(body[len(first):])
             return True
 
         try:
-            parts = shlex.split(line)
+            parts = shlex.split(body)
         except ValueError as exc:
             print(f"parse error: {exc}")
             return True
-        cmd, args = parts[0], parts[1:]
-
-        if cmd in ("quit", "exit", "q"):
-            return self._quit()
+        cmd, args = parts[0].lower(), parts[1:]
         handlers = {
-            "help": lambda a: print(HELP),
-            "?": lambda a: print(HELP),
+            "list": self.cmd_list,
             "agents": self.cmd_agents,
             "ps": lambda a: self._print_ps(),
             "ls": lambda a: self._print_ps(),
@@ -345,7 +397,11 @@ class Shell:
             "sessions": self.cmd_sessions,
             "session": self.cmd_session,
         }
-        handlers[cmd](args)
+        handler = handlers.get(cmd)
+        if handler is None:
+            print(f"unknown command: /{cmd} (try /help)")
+        else:
+            handler(args)
         return True
 
     def _quit(self) -> bool:
@@ -362,10 +418,10 @@ class Shell:
     def run(self) -> None:
         print(BANNER)
         if not os.environ.get("ANTHROPIC_API_KEY"):
-            print("⚠️  ANTHROPIC_API_KEY is not set — agents will start but `send` will error.")
+            print("⚠️  ANTHROPIC_API_KEY is not set — agents will start but the conductor and `/send` will error.")
             print("    export ANTHROPIC_API_KEY=sk-ant-... then restart the host.\n")
         print(f"root: {self.root}")
-        print("type a goal in plain English (the conductor routes it), or `help` for commands.\n")
+        print("type a goal in plain English (the conductor routes it). commands start with / — try /list or /help.\n")
         self._print_ps()
         print()
 

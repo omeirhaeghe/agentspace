@@ -32,12 +32,12 @@ Type these straight into the `agentspace>` prompt:
 research france's odds of winning the world cup and make a cool powerpoint about it
 
 # self-writing agent — PI builds it, then you use it
-create-agent a stock portfolio tracking agent
-start stock-portfolio-tracker
-send stock-portfolio-tracker "how would $5k split across NVDA, AAPL, MSFT be doing?"
+/create-agent a stock portfolio tracking agent
+/start stock-portfolio-tracker
+/send stock-portfolio-tracker "how would $5k split across NVDA, AAPL, MSFT be doing?"
 
 # self-writing tool — doc-writer has no document tool, so it authors one
-send doc-writer "create a markdown doc 'treehouse.md' with sections Overview, Materials, Steps"
+/send doc-writer "create a markdown doc 'treehouse.md' with sections Overview, Materials, Steps"
 
 # plain research with citations
 what's the latest stable python release? cite a source
@@ -45,6 +45,9 @@ what's the latest stable python release? cite a source
 # let the conductor figure out it needs a new kind of agent entirely
 I want to track my reading list — set that up and add "Dune"
 ```
+
+> Commands start with `/` (try `/list` to see everything you've got). Anything **without**
+> a slash is a natural-language goal handed to the conductor.
 
 ---
 
@@ -63,11 +66,12 @@ uv run agentspace-monitor                            # (optional, 2nd terminal) 
 # just say what you want — the conductor discovers and orchestrates the agents:
 agentspace> research france's odds of winning the world cup and make a cool powerpoint about it
 
-# …or drive agents directly:
-agentspace> start researcher
-agentspace> send researcher "what's the latest stable python? cite a source"
-agentspace> ps
-agentspace> quit
+# …or drive agents directly with /commands:
+agentspace> /list
+agentspace> /start researcher
+agentspace> /send researcher "what's the latest stable python? cite a source"
+agentspace> /ps
+agentspace> /quit
 ```
 
 > No API key? The host still runs and you can start/stop agents — the conductor and `send` just return a clear error.
@@ -141,19 +145,21 @@ the [PI](https://github.com/badlogic/pi-mono) coding agent:
 
 ## Shell commands
 
+Commands start with `/`. Anything without a slash is a natural-language goal for the conductor.
+
 | command | what it does |
 |---|---|
 | *(plain English)* | hand a goal to the conductor — it picks & orchestrates agents |
-| `agents` | list agents and what each is for |
-| `create-agent <description>` | have PI build a new agent and add it to the registry |
-| `do <goal>` / `ask <goal>` | explicitly send a goal to the conductor |
-| `ps` / `ls` | list agents and their status |
-| `start` / `stop` / `restart <name>` | manage agent processes |
-| `send <name> "<msg>" [--session <id>] [--wait]` | send a message (async; `--wait` blocks) |
-| `status` / `runs <name>` | in-flight runs / run history |
-| `logs <name> [n]` | tail an agent's log |
-| `sessions <name>` / `session <name> <id>` | list / inspect sessions |
-| `help` / `quit` | help / exit |
+| `/list` | plain-English overview of every agent, tool & skill you have |
+| `/agents` | list agents and what each is for |
+| `/create-agent <description>` | have PI build a new agent and add it to the registry |
+| `/ps` / `/ls` | agent status table (running/stopped, port, pid) |
+| `/start` / `/stop` / `/restart <name>` | manage agent processes |
+| `/send <name> "<msg>" [--session <id>] [--wait]` | send a message (async; `--wait` blocks) |
+| `/status` / `/runs <name>` | in-flight runs / run history |
+| `/logs <name> [n]` | tail an agent's log |
+| `/sessions <name>` / `/session <name> <id>` | list / inspect sessions |
+| `/help` / `/quit` | help / exit |
 
 ## Add an agent
 
