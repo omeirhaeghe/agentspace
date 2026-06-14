@@ -186,6 +186,8 @@ export AGENTSPACE_PI_MODEL=claude-sonnet-4-6
 ```
 
 `/ps` shows each agent's current model; the per-turn reply footer reports token usage.
+The prompt keeps a **persistent history** (`runtime/history`): press ↑ to recall past
+commands and goals across sessions, and accept the greyed autosuggestion with →.
 On first launch a quick **setup** flow walks you through the API key, a default model, and
 optional prerequisites — re-run it anytime with `/setup`, or tweak models live with
 `/settings` (e.g. `/settings model coder opus`, `/settings conductor haiku`).

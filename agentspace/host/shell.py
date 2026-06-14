@@ -816,8 +816,9 @@ class Shell:
         isn't available / not a TTY."""
         try:
             from prompt_toolkit import PromptSession
+            from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
             from prompt_toolkit.formatted_text import HTML
-            from prompt_toolkit.history import InMemoryHistory
+            from prompt_toolkit.history import FileHistory
             from prompt_toolkit.patch_stdout import patch_stdout
             from prompt_toolkit.styles import Style
 
@@ -835,8 +836,13 @@ class Shell:
                     f" AgentSpace   plain text → conductor   ·   /help  ·  /list  ·  /quit{busy}{key} "
                 )
 
+            # Persist input history across sessions (↑ recalls past commands & goals).
+            hist_path = paths.runtime_dir(self.root) / "history"
+            hist_path.parent.mkdir(parents=True, exist_ok=True)
+
             session = PromptSession(
-                history=InMemoryHistory(),
+                history=FileHistory(str(hist_path)),
+                auto_suggest=AutoSuggestFromHistory(),
                 style=style,
                 bottom_toolbar=toolbar,
                 refresh_interval=0.5,
