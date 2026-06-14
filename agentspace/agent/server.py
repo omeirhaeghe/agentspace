@@ -94,7 +94,20 @@ def create_app(spec: AgentSpec, root: Path) -> FastAPI:
     def health() -> HealthResponse:
         tools, _ = registry.assemble(spec)
         tool_names = [t.get("name", t.get("type", "?")) for t in tools]
+        tool_names += [s["name"] for s in agent.mcp.tool_schemas]
         return HealthResponse(name=spec.name, model=spec.model, tools=tool_names)
+
+    @app.get("/mcp")
+    def mcp_status() -> dict:
+        return {
+            "agent": spec.name,
+            "servers": agent.mcp.status(),
+            "tools": [s["name"] for s in agent.mcp.tool_schemas],
+        }
+
+    @app.on_event("shutdown")
+    def _shutdown() -> None:
+        agent.mcp.close()
 
     @app.post("/responses")
     def responses(req: ResponsesRequest, wait: bool = False) -> dict:

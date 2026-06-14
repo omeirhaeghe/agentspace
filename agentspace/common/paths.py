@@ -52,6 +52,11 @@ def agent_contract_path(root: Path) -> Path:
     return root / "docs" / "AGENT_CONTRACT.md"
 
 
+def mcp_servers_file(root: Path) -> Path:
+    """The MCP server catalog (declares servers agents can connect to)."""
+    return root / "mcp" / "servers.yaml"
+
+
 def generated_tools_dir() -> Path:
     """Directory where PI-authored tools live (inside the package)."""
     return Path(__file__).resolve().parent.parent / "agent" / "tools" / "generated"

@@ -18,6 +18,9 @@
   the next turn.
 - 🤖 **The system writes its own agents.** `create-agent "a stock portfolio tracker"`
   (or just ask) and PI builds a whole new agent, live, no restart.
+- 🔌 **MCP built in.** Agents can use any [Model Context Protocol](https://modelcontextprotocol.io)
+  server's tools (filesystem, fetch, git, github, … ) — declared in `mcp/servers.yaml`,
+  wired per agent. Plus native tools: `read_file`, `write_file`, `http_fetch`, `python`.
 - 🧩 **Everything is hackable & visible.** A hand-written tool-loop (no agent SDK),
   declarative agents (`agent.yaml`), markdown skills, on-disk sessions.
 - ⚡ **Parallel & observable.** Each agent is its own process; runs are async with a live
@@ -108,9 +111,13 @@ load history → call the model → if it wants a tool, run it and feed the resu
 
 That loop is the whole point — nothing is hidden behind an SDK.
 
-**Tools** come in two flavors:
+**Tools** come in three flavors:
 - `web_search` is a **server tool** — Anthropic runs it; we never touch it.
-- `sh`, `load_skill`, `write_tool` are **client tools** — we execute them locally.
+- **client tools** we execute locally: `sh`, `read_file`, `write_file`, `http_fetch`,
+  `python`, `load_skill`, `write_tool`.
+- **MCP tools** — pulled from [Model Context Protocol](https://modelcontextprotocol.io)
+  servers an agent connects to (`mcp__<server>__<tool>`). All three flavors land in the
+  same `(tools, handlers)` the loop dispatches. See [docs/MCP.md](docs/MCP.md).
 
 **Skills** (`skills/<name>/SKILL.md`) are markdown playbooks with progressive
 disclosure: the prompt only lists a skill's name + description until the agent calls
@@ -151,6 +158,7 @@ Commands start with `/`. Anything without a slash is a natural-language goal for
 |---|---|
 | *(plain English)* | hand a goal to the conductor — it picks & orchestrates agents |
 | `/list` | plain-English overview of every agent, tool & skill you have |
+| `/mcp` | list MCP servers and live connection status |
 | `/agents` | list agents and what each is for |
 | `/create-agent <description>` | have PI build a new agent and add it to the registry |
 | `/clean [output\|tools\|sessions\|all]` | move agent-produced files to trash (default: `output/`) |
@@ -173,8 +181,9 @@ name: my-agent
 model: claude-sonnet-4-6
 system_prompt: |
   You are a helpful agent.
-tools: [sh, load_skill]      # web_search, sh, load_skill, write_tool
+tools: [sh, load_skill]      # web_search, sh, read_file, write_file, http_fetch, python, write_tool, load_skill
 skills: [summarize]
+mcp_servers: [filesystem]    # optional: MCP servers from mcp/servers.yaml
 can_author_tools: false      # true to allow write_tool (PI)
 ```
 
@@ -182,17 +191,18 @@ can_author_tools: false      # true to allow write_tool (PI)
 
 ```text
 agentspace/host/      host REPL, supervisor, registry  (control plane)
-agentspace/agent/     loop, server, sessions, tools, pi_bridge  (one per process)
+agentspace/agent/     loop, server, sessions, tools, pi_bridge, mcp_client  (one per process)
 agents/               declarative agent registry (agent.yaml each)
 skills/               markdown skills
-docs/TOOL_CONTRACT.md the tool contract (also handed to PI)
+mcp/servers.yaml      MCP server catalog (filesystem, fetch, git, github)
+docs/                 TOOL_CONTRACT, AGENT_CONTRACT, MCP
 ```
 
 ## Safety
 
-`sh` runs real commands and `write_tool` writes & runs code via PI — both on your
-machine, inside the agent's working dir, logged. Great for a local sandbox; don't point
-these agents at untrusted input.
+`sh`, `python`, `write_file`, and `write_tool` run real commands / write & execute code on
+your machine (inside the agent's working dir, logged), and MCP servers run as local
+subprocesses. Great for a local sandbox; don't point these agents at untrusted input.
 
 ## License
 

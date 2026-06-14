@@ -20,6 +20,8 @@ class AgentSpec:
     skills: list[str] = field(default_factory=list)
     max_tokens: int = 4096
     can_author_tools: bool = False
+    # MCP servers (by name from mcp/servers.yaml) this agent connects to.
+    mcp_servers: list[str] = field(default_factory=list)
     # Where the agent does file/command work. Defaults to the repo root.
     workdir: str | None = None
 

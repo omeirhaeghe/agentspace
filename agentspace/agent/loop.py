@@ -22,6 +22,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from agentspace.agent.config import AgentSpec
+from agentspace.agent.mcp_client import MCPManager
 from agentspace.agent.sessions import SessionStore
 from agentspace.agent.tools import registry
 from agentspace.agent.tools.context import ToolContext
@@ -46,7 +47,16 @@ class Agent:
             agent_name=spec.name,
             output_dir=paths.output_dir(root),
         )
+        # Connect MCP servers once (reused across runs). Empty list → no-op.
+        self.mcp = MCPManager(spec.mcp_servers, root)
         self._client = None
+
+    def _assemble(self):
+        """Native tools (registry) + this agent's MCP tools, as one (tools, handlers)."""
+        tools, handlers = registry.assemble(self.spec)
+        tools = tools + self.mcp.tool_schemas
+        handlers = {**handlers, **self.mcp.handlers}
+        return tools, handlers
 
     # -- model client (lazy so the server can start without a key) -----------
     def _get_client(self):
@@ -79,7 +89,7 @@ class Agent:
         messages = self.sessions.load(session_id)
         messages.append({"role": "user", "content": user_input})
 
-        tools, handlers = registry.assemble(self.spec)
+        tools, handlers = self._assemble()
         system = self._system_prompt()
         # A per-run context whose progress() streams interim tool output as events.
         ctx = replace(self.ctx, progress=lambda text: emit("progress", text))
@@ -134,7 +144,7 @@ class Agent:
 
                 # A freshly authored tool must become callable this turn.
                 if wrote_tool:
-                    tools, handlers = registry.assemble(self.spec)
+                    tools, handlers = self._assemble()
                     emit("system", "reloaded tools — newly authored tool now available")
             else:
                 messages.append(

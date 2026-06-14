@@ -1,0 +1,32 @@
+# MCP server catalog.
+#
+# Agents connect to servers listed here by name (in their agent.yaml `mcp_servers:`).
+# Two transports are supported:
+#   • stdio  — a local subprocess: give `command` + `args` (+ optional `env`)
+#   • remote — a hosted server:    give `url` (+ optional `headers`)
+# Use ${ENV_VAR} anywhere to pull a value from the environment.
+# Set `enabled: false` to keep a server defined but skipped until you're ready.
+
+servers:
+  # Read/list/search files in a directory (no auth). Needs Node (npx).
+  filesystem:
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+
+  # Fetch a URL and return its content as markdown (no auth). Needs uv (uvx).
+  fetch:
+    command: uvx
+    args: ["mcp-server-fetch"]
+
+  # Inspect/operate on the git repo: status, diff, log, etc. (no auth). Needs uvx.
+  git:
+    command: uvx
+    args: ["mcp-server-git", "--repository", "."]
+
+  # GitHub via the remote MCP server (issues, PRs, code search).
+  # Disabled until you set GITHUB_TOKEN and flip enabled to true.
+  github:
+    url: "https://api.githubcopilot.com/mcp/"
+    headers:
+      Authorization: "Bearer ${GITHUB_TOKEN}"
+    enabled: false

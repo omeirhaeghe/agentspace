@@ -19,6 +19,7 @@ import threading
 import time
 from pathlib import Path
 
+from agentspace.agent.mcp_client import load_catalog
 from agentspace.agent.tools import registry as tool_registry
 from agentspace.agent.tools.skills import skill_description
 from agentspace.common import paths
@@ -41,6 +42,7 @@ Just type a goal in plain English — the conductor routes it to the right agent
 
 Commands start with "/" (anything without a slash goes to the conductor):
   /list                         plain-English overview of every agent, tool & skill
+  /mcp                          list MCP servers and live connection status
   /agents                       list agents and what each is for
   /create-agent <description>   have PI build a new agent and add it to the registry
   /clean [output|tools|sessions|all]
@@ -241,8 +243,40 @@ class Shell:
             for s in skills:
                 print(f"  • {s} — {self._short(skill_description(skills_dir, s))}")
 
+        catalog = load_catalog(self.root)
+        if catalog:
+            print("\nMCP servers (extra tools via Model Context Protocol):")
+            for name, cfg in catalog.items():
+                transport = "remote http" if cfg.get("url") else "stdio"
+                disabled = "" if cfg.get("enabled", True) else "  (disabled)"
+                users = [s.name for s in self._agents() if name in (s.mcp_servers or [])]
+                print(f"  • {name} [{transport}]{disabled} — used by: {', '.join(users) or 'no agent yet'}")
+
         print("\nThe system extends itself: agents author new tools with write_tool, "
               "and you can spin up new agents with /create-agent.\n")
+
+    def cmd_mcp(self, args):
+        catalog = load_catalog(self.root)
+        if not catalog:
+            print("no MCP servers configured (see mcp/servers.yaml).")
+            return
+        print("MCP servers (from mcp/servers.yaml):")
+        for name, cfg in catalog.items():
+            transport = f"remote {cfg['url']}" if cfg.get("url") else f"stdio: {cfg.get('command','?')}"
+            disabled = "" if cfg.get("enabled", True) else "  (disabled)"
+            print(f"  • {name} — {transport}{disabled}")
+        print("\nLive connections (running agents):")
+        any_live = False
+        for spec in self._agents():
+            if spec.mcp_servers and self.sup.is_running(spec.name):
+                res = self.sup.get_json(spec.name, "/mcp")
+                if res["ok"]:
+                    any_live = True
+                    d = res["data"]
+                    conn = ", ".join(f"{k}={'✓' if v else '✗'}" for k, v in d["servers"].items())
+                    print(f"  • {spec.name}: {conn}  ({len(d['tools'])} mcp tools)")
+        if not any_live:
+            print("  (no running agents use MCP — `/start files` to try the filesystem server)")
 
     def cmd_agents(self, args):
         agents = self._agents()
@@ -511,6 +545,7 @@ class Shell:
         cmd, args = parts[0].lower(), parts[1:]
         handlers = {
             "list": self.cmd_list,
+            "mcp": self.cmd_mcp,
             "clean": self.cmd_clean,
             "trash": self.cmd_trash,
             "agents": self.cmd_agents,

@@ -1,0 +1,11 @@
+name: github
+model: claude-sonnet-4-6
+description: Works with GitHub (issues, PRs, code search) via the GitHub MCP server. Needs GITHUB_TOKEN.
+system_prompt: |
+  You are a GitHub agent. Use your GitHub MCP tools (mcp__github__*) to search code, read
+  and manage issues and pull requests, and inspect repositories. Summarize findings clearly
+  and confirm intent before creating or modifying anything.
+tools: [load_skill]
+skills: [summarize, technical-writing]
+mcp_servers: [github]
+max_tokens: 4096
