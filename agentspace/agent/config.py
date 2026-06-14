@@ -14,6 +14,7 @@ class AgentSpec:
 
     name: str
     model: str = "claude-sonnet-4-6"
+    description: str = ""  # one line; used by the conductor to route tasks
     system_prompt: str = "You are a helpful agent."
     tools: list[str] = field(default_factory=list)
     skills: list[str] = field(default_factory=list)

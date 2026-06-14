@@ -20,15 +20,17 @@ uv run agentspace                                    # launch the host shell
 ```
 
 ```text
+# just say what you want — the conductor discovers and orchestrates the agents:
+agentspace> research france's odds of winning the world cup and make a cool powerpoint about it
+
+# …or drive agents directly:
 agentspace> start researcher
 agentspace> send researcher "what's the latest stable python? cite a source"
-agentspace> start doc-writer
-agentspace> send doc-writer "create a markdown doc 'treehouse.md' with sections Overview, Materials, Steps"
 agentspace> ps
 agentspace> quit
 ```
 
-> No API key? The host still runs and you can start/stop agents — `send` just returns a clear error.
+> No API key? The host still runs and you can start/stop agents — the conductor and `send` just return a clear error.
 
 ---
 
@@ -40,9 +42,17 @@ agentspace> quit
         └── send ──http POST──────────────▲  each runs its own raw Messages-API loop
 ```
 
-**Host (control plane).** The `agentspace>` shell never calls the model. It just
-launches one OS process per agent, stops them, and relays your messages over HTTP.
-Agents run in parallel and show up in `ps`.
+**The conductor (natural language).** Type a goal in plain English and the host's
+conductor (`agentspace/host/orchestrator.py`) plans it: it discovers the registered
+agents (`list_agents`), delegates sub-tasks to the best-suited ones (`run_agent`,
+auto-starting them), chains their outputs, and synthesizes a final answer — streaming
+each step as it goes. For *"research France's WC odds and make a deck"* it routes
+`researcher` → `doc-writer` on its own. Explicit commands (`start`, `send`, `ps`, …)
+still work for driving agents directly.
+
+**Host (control plane).** Apart from the conductor, the shell launches one OS process
+per agent, stops them, and relays messages over HTTP. Agents run in parallel and show
+up in `ps`.
 
 **Agent (one process each).** Every agent is a small HTTP server wrapping a
 **hand-written tool loop** (`agentspace/agent/loop.py`) against the raw Anthropic
@@ -81,6 +91,9 @@ hot-reloads, and the agent calls its brand-new tool on the next turn. That's how
 
 | command | what it does |
 |---|---|
+| *(plain English)* | hand a goal to the conductor — it picks & orchestrates agents |
+| `agents` | list agents and what each is for |
+| `do <goal>` / `ask <goal>` | explicitly send a goal to the conductor |
 | `ps` / `ls` | list agents and their status |
 | `start` / `stop` / `restart <name>` | manage agent processes |
 | `send <name> "<msg>" [--session <id>] [--wait]` | send a message (async; `--wait` blocks) |

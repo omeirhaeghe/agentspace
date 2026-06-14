@@ -20,6 +20,7 @@ from pathlib import Path
 
 from agentspace.common import paths
 from agentspace.host import registry
+from agentspace.host.orchestrator import Orchestrator
 from agentspace.host.supervisor import Supervisor
 
 BANNER = r"""
@@ -32,7 +33,12 @@ BANNER = r"""
 """
 
 HELP = """\
+Type a goal in plain English and the conductor routes it to the right agent(s):
+  > research france's world cup odds and make a cool powerpoint about it
+
 commands:
+  agents                       list agents and what each is for
+  do <goal> | ask <goal>       explicitly send a goal to the conductor
   ps | ls                      list agents and their status
   start <name>                 start an agent process
   stop <name>                  stop an agent process
@@ -65,6 +71,7 @@ class Shell:
     def __init__(self, root: Path):
         self.root = root
         self.sup = Supervisor(root)
+        self.orch = Orchestrator(root, self.sup)
         # run_id -> {name, seen, session_id}
         self._active: dict[str, dict] = {}
         self._active_lock = threading.Lock()
@@ -187,6 +194,35 @@ class Shell:
         for run_id, info in items:
             print(f"{run_id:<16}{info['name']:<14}{info['session_id']:<14}{info['seen']}")
 
+    def cmd_agents(self, args):
+        agents = self._agents()
+        if not agents:
+            print("no agents found.")
+            return
+        for spec in agents:
+            print(f"{spec.name:<14}{spec.description or '(no description)'}")
+
+    def cmd_orchestrate(self, goal: str):
+        """Hand a natural-language goal to the conductor (runs in the background)."""
+        goal = goal.strip()
+        if not goal:
+            return
+        icons = {
+            "think": "🧭", "say": "🧭", "step": "  …", "delegate": "  →",
+            "subevent": "      ·", "reply": "  ✓", "error": "  ✗",
+        }
+
+        def work():
+            def emit(kind, text):
+                print(f"{icons.get(kind, '  ·')} {text}")
+
+            print(f"🧭 conductor: {goal}")
+            final = self.orch.run(goal, emit)
+            if final:
+                print(f"\nconductor> {final}\n")
+
+        threading.Thread(target=work, daemon=True).start()
+
     def cmd_runs(self, args):
         if not args:
             print("usage: runs <name>")
@@ -242,11 +278,26 @@ class Shell:
             print(f"  {role:<10} {str(preview)[:90]}")
 
     # -- loop ----------------------------------------------------------------
+    COMMANDS = {
+        "quit", "exit", "q", "help", "?", "ps", "ls", "start", "stop", "restart",
+        "send", "status", "runs", "logs", "sessions", "session", "agents", "do", "ask",
+    }
+
     def dispatch(self, line: str) -> bool:
-        """Run one command. Returns False to exit."""
+        """Run one command. Returns False to exit. Free text → the conductor."""
         line = line.strip()
         if not line:
             return True
+
+        first = line.split()[0]
+        # Anything that isn't a known command is a natural-language goal.
+        if first not in self.COMMANDS:
+            self.cmd_orchestrate(line)
+            return True
+        if first in ("do", "ask"):
+            self.cmd_orchestrate(line[len(first):])
+            return True
+
         try:
             parts = shlex.split(line)
         except ValueError as exc:
@@ -259,6 +310,7 @@ class Shell:
         handlers = {
             "help": lambda a: print(HELP),
             "?": lambda a: print(HELP),
+            "agents": self.cmd_agents,
             "ps": lambda a: self._print_ps(),
             "ls": lambda a: self._print_ps(),
             "start": self.cmd_start,
@@ -271,11 +323,7 @@ class Shell:
             "sessions": self.cmd_sessions,
             "session": self.cmd_session,
         }
-        handler = handlers.get(cmd)
-        if handler is None:
-            print(f"unknown command: {cmd} (try `help`)")
-        else:
-            handler(args)
+        handlers[cmd](args)
         return True
 
     def _quit(self) -> bool:
@@ -295,7 +343,7 @@ class Shell:
             print("⚠️  ANTHROPIC_API_KEY is not set — agents will start but `send` will error.")
             print("    export ANTHROPIC_API_KEY=sk-ant-... then restart the host.\n")
         print(f"root: {self.root}")
-        print("type `help` for commands.\n")
+        print("type a goal in plain English (the conductor routes it), or `help` for commands.\n")
         self._print_ps()
         print()
 
