@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="docs/demo.svg" alt="AgentSpace — natural-language orchestration demo" width="760">
-  <br><sub><i>Illustrative walkthrough: one plain-English goal → the conductor routes research → deck-building.</i></sub>
+  <br><sub><i>Illustrative walkthrough: one plain-English goal → the conductor routes tech-writer (PRD, via a skill) → coder (scaffold + tests).</i></sub>
 </p>
 
 ---
