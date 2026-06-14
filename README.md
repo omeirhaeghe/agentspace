@@ -150,6 +150,34 @@ the [PI](https://github.com/badlogic/pi-mono) coding agent:
 
 ---
 
+## Models
+
+Which model each part of the system runs on, and how to change it:
+
+| Component | Model (default) | How to change |
+|---|---|---|
+| **Agents** (researcher, coder, web, …) | `claude-sonnet-4-6` | `model:` in that agent's `agents/<name>/agent.yaml` |
+| **Conductor** (the orchestrator) | `claude-sonnet-4-6` | `AGENTSPACE_CONDUCTOR_MODEL` env var |
+| **PI** (`write_tool` / `create-agent` authoring) | Anthropic, PI's default Claude | `AGENTSPACE_PI_MODEL` + `AGENTSPACE_PI_PROVIDER` env vars |
+| **`web_search`** | runs server-side on the calling agent's model | — (set the agent's `model:`) |
+| **MCP servers** | none — they're tool providers, not models | — |
+
+Every agent currently ships on `claude-sonnet-4-6` (the `AgentSpec` default). Per-agent
+overrides let you, say, put a heavy `coder` on Opus and a quick `assistant` on Haiku:
+
+```yaml
+# agents/coder/agent.yaml
+model: claude-opus-4-8
+```
+
+```bash
+# run the conductor and PI on specific models
+export AGENTSPACE_CONDUCTOR_MODEL=claude-opus-4-8
+export AGENTSPACE_PI_MODEL=claude-sonnet-4-6
+```
+
+`/ps` shows each agent's current model; the per-turn reply footer reports token usage.
+
 ## Shell commands
 
 Commands start with `/`. Anything without a slash is a natural-language goal for the conductor.
