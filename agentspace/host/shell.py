@@ -27,6 +27,8 @@ from agentspace.common import paths
 from agentspace.host import agent_factory, deploy, registry
 from agentspace.host import settings as settings_mod
 from agentspace.host.orchestrator import Orchestrator
+from agentspace.common.schedule import parse_schedule
+from agentspace.host.scheduler import Ticker
 from agentspace.host.supervisor import Supervisor
 
 BANNER = r"""
@@ -70,6 +72,7 @@ Commands start with "/" (anything without a slash goes to the conductor):
   /logs <name> [n]              show the last n log lines (default 40)
   /sessions <name>              list an agent's sessions
   /session <name> <id>          print a session's messages (turn count)
+  /schedule [list|cancel <id>]  timed/recurring runs (or just say "check X every hour today")
   /help | /quit                 help / leave (quit offers to stop running agents)
 """
 
@@ -98,6 +101,7 @@ class Shell:
         self._active_lock = threading.Lock()
         self._stop = threading.Event()
         self._stream = True  # inline interim event streaming in the REPL
+        self.ticker = Ticker(root, fire=self._fire_scheduled)
 
     def _apply_settings(self) -> None:
         """Make the loaded settings take effect (conductor model + PI env)."""
@@ -641,6 +645,63 @@ class Shell:
 
         threading.Thread(target=work, daemon=True).start()
 
+    def _fire_scheduled(self, job):
+        """A scheduled job came due: run its goal through the conductor."""
+        def emit(kind, text):
+            if kind in ("reply", "say", "error", "delegate"):
+                print(f"  ⏰ {text}")
+        print(f"\n⏰ scheduled {job.id}: {job.goal}")
+        final = self.orch.run(job.goal, emit)
+        if final:
+            print(f"⏰ {job.id}> {final}\n")
+
+    def cmd_schedule(self, args):
+        """List / cancel / add scheduled jobs. Creating via plain English (handled by
+        the scheduler agent through the conductor) is the usual path; this is the
+        manual shortcut."""
+        sub = args[0].lower() if args else "list"
+        store = self.ticker.store
+        if sub in ("list", "ls"):
+            jobs = store.list()
+            if not jobs:
+                print("no scheduled jobs. try: check google stock at 3pm")
+                return
+            print(f"{len(jobs)} scheduled job(s):")
+            for j in jobs:
+                print(f"  {j.describe()}")
+        elif sub in ("cancel", "rm", "remove"):
+            if len(args) < 2:
+                print("usage: /schedule cancel <id|all>")
+                return
+            jid = args[1]
+            if jid.lower() == "all":
+                print(f"cancelled {store.clear()} job(s).")
+            else:
+                print(f"cancelled {jid}." if store.remove(jid) else f"no job {jid!r}.")
+        elif sub in ("pause", "resume"):
+            if len(args) < 2:
+                print(f"usage: /schedule {sub} <id>")
+                return
+            ok = store.set_paused(args[1], sub == "pause")
+            print(f"{sub}d {args[1]}." if ok else f"no job {args[1]!r}.")
+        elif sub == "add":
+            # /schedule add <when> :: <goal>
+            rest = " ".join(args[1:])
+            if "::" not in rest:
+                print('usage: /schedule add <when> :: <goal>')
+                return
+            when, goal = (p.strip() for p in rest.split("::", 1))
+            parsed = parse_schedule(when)
+            if parsed is None:
+                print(f"couldn't parse a time from {when!r}.")
+                return
+            sched, _ = parsed
+            job = store.add(goal, sched)
+            print(f"scheduled {job.id}: {goal!r} — {sched.label}.")
+        else:
+            print("usage: /schedule [list | add <when> :: <goal> | "
+                  "cancel <id|all> | pause <id> | resume <id>]")
+
     def cmd_runs(self, args):
         if not args:
             print("usage: runs <name>")
@@ -763,6 +824,8 @@ class Shell:
             "logs": self.cmd_logs,
             "sessions": self.cmd_sessions,
             "session": self.cmd_session,
+            "schedule": self.cmd_schedule,
+            "sched": self.cmd_schedule,
         }
         handler = handlers.get(cmd)
         if handler is None:
@@ -802,6 +865,10 @@ class Shell:
 
         monitor = threading.Thread(target=self._monitor, daemon=True)
         monitor.start()
+        self.ticker.start()
+        pending = self.ticker.store.list()
+        if pending:
+            print(f"⏰ {len(pending)} scheduled job(s) loaded — /schedule to view.\n")
 
         prompt_fn = self._make_prompt()
         while True:
