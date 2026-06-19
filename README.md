@@ -23,9 +23,16 @@
   the next turn.
 - 🤖 **The system writes its own agents.** `create-agent "a stock portfolio tracker"`
   (or just ask) and PI builds a whole new agent, live, no restart.
+- ⏰ **Schedule & watch.** *"check stock quotes every hour today"* or *"tell me if BTC
+  breaks $70k"* — a **scheduler** agent sets up timed/recurring runs and a **watchdog**
+  agent pings you only when a condition actually trips. Jobs survive restarts.
+- 📲 **Reaches your phone — both ways.** Agents push alerts to **Telegram** (or desktop /
+  Slack), and you can **text the bot back** to drive the conductor remotely — schedule a
+  watch, ask a question, get the answer, all from your phone.
 - 🔌 **MCP built in.** Agents can use any [Model Context Protocol](https://modelcontextprotocol.io)
   server's tools (filesystem, fetch, git, github, … ) — declared in `mcp/servers.yaml`,
-  wired per agent. Plus native tools: `read_file`, `write_file`, `http_fetch`, `python`.
+  wired per agent. Plus native tools: web & image search, full-page `web_fetch`, sports
+  data, `python`, file I/O, conversation recall, scheduling, and notifications.
 - ☁️ **Deploy to the cloud.** `/deploy <agent>` hosts an agent on [Render](https://render.com)
   (token-protected) straight from the shell — then `/send` it like any local one. See
   [docs/DEPLOY.md](docs/DEPLOY.md).
@@ -53,9 +60,18 @@ research france's odds of winning the world cup and make a cool powerpoint about
 # plain research with citations
 what's the latest stable python release? cite a source
 
+# schedule a recurring run, bounded to today — the scheduler agent sets it up
+fetch cnn.com every hour today and summarize the top headlines
+
+# watch a condition and only get pinged when it trips (to your phone, if Telegram is on)
+watch AAPL and tell me if it drops below $180, check every 30 minutes
+
 # let the conductor figure out it needs a new kind of agent entirely
 I want to track my reading list — set that up and add "Dune"
 ```
+
+> 📲 **From your phone:** with Telegram configured (`/setup`), text the bot any of the
+> above and it routes through the same conductor — replies come straight back.
 
 > Commands start with `/` (try `/list` to see everything you've got). Anything **without**
 > a slash is a natural-language goal handed to the conductor.
@@ -72,6 +88,11 @@ npm install -g @mariozechner/pi-coding-agent         # optional: enables write_t
 uv run agentspace                                    # launch the host shell
 uv run agentspace-monitor                            # (optional, 2nd terminal) live feed
 ```
+
+> 📲 **Optional — phone alerts & remote control.** On first launch (or `/setup`) you can
+> wire up a Telegram bot in ~2 minutes: paste a [@BotFather](https://t.me/botfather) token,
+> message the bot once, and AgentSpace auto-detects your chat id. After that, agents can
+> push alerts to your phone and you can text the bot to drive the conductor.
 
 ```text
 # just say what you want — the conductor discovers and orchestrates the agents:
@@ -122,7 +143,9 @@ That loop is the whole point — nothing is hidden behind an SDK.
 **Tools** come in three flavors:
 - `web_search` is a **server tool** — Anthropic runs it; we never touch it.
 - **client tools** we execute locally: `sh`, `read_file`, `write_file`, `http_fetch`,
-  `python`, `load_skill`, `write_tool`.
+  `web_fetch`, `image_search`, `fetch_sports_data`, `conversation_search`, `recent_chats`,
+  `python`, `load_skill`, `write_tool`, `schedule_create`/`schedule_list`/`schedule_cancel`,
+  `send_notification`.
 - **MCP tools** — pulled from [Model Context Protocol](https://modelcontextprotocol.io)
   servers an agent connects to (`mcp__<server>__<tool>`). All three flavors land in the
   same `(tools, handlers)` the loop dispatches. See [docs/MCP.md](docs/MCP.md).
@@ -146,6 +169,24 @@ interleave. Read-only; great for watching an orchestration unfold while the main
 stays your clean input area. (Prefer one window? `/stream off` silences the inline event
 feed in the REPL and you watch the dashboard instead.)
 
+**Schedule, watch & notify.** Scheduling is itself an agent capability, not bolted-on
+plumbing. Say *"check stock quotes every hour today"* and the conductor routes it to the
+**scheduler** agent, which parses the timing and registers a job. A thin host **ticker**
+(`agentspace/host/scheduler.py` — the one piece that must live host-side, since an agent
+can't watch a clock) fires each due job's goal back **through the conductor**, so it
+re-routes to whatever agent fits. Pair it with the **watchdog** agent — it checks a
+condition against live data and calls `send_notification` *only when it trips*, staying
+quiet otherwise. Notifications go to a macOS desktop popup, Slack, a durable log, and —
+the good part — your **phone via Telegram**. Jobs persist to `runtime/scheduler/jobs.json`
+and survive restarts.
+
+**Telegram, two ways.** Set it up once in `/setup` (or `/settings telegram`) and the same
+bot both **pushes alerts to you** and **takes commands from you**: a host bridge
+(`agentspace/host/telegram_bridge.py`) long-polls Telegram, hands each message you send to
+the conductor, and texts the reply back — locked to your own chat id so nobody else can
+drive it. Be away from your desk, text *"watch BTC and ping me if it breaks $70k"*, and get
+the alert on the same thread.
+
 **Self-extending (the fun part).** The system can grow itself, at two levels, both via
 the [PI](https://github.com/badlogic/pi-mono) coding agent:
 - **New tools** — give an agent `write_tool` and it authors the tool it's missing: PI
@@ -165,7 +206,7 @@ Which model each part of the system runs on, and how to change it:
 
 | Component | Model (default) | How to change |
 |---|---|---|
-| **Agents** (researcher, coder, web, …) | `claude-sonnet-4-6` | `model:` in that agent's `agents/<name>/agent.yaml` |
+| **Agents** (researcher, coder, scheduler, watchdog, …) | `claude-sonnet-4-6` | `model:` in that agent's `agents/<name>/agent.yaml` |
 | **Conductor** (the orchestrator) | `claude-sonnet-4-6` | `AGENTSPACE_CONDUCTOR_MODEL` env var |
 | **PI** (`write_tool` / `create-agent` authoring) | Anthropic, PI's default Claude | `AGENTSPACE_PI_MODEL` + `AGENTSPACE_PI_PROVIDER` env vars |
 | **`web_search`** | runs server-side on the calling agent's model | — (set the agent's `model:`) |
@@ -202,8 +243,8 @@ Commands start with `/`. Anything without a slash is a natural-language goal for
 |---|---|
 | *(plain English)* | hand a goal to the conductor — it picks & orchestrates agents |
 | `/list` | plain-English overview of every agent, tool & skill you have |
-| `/settings [...]` | show/change models live (agents, conductor, PI) + set the API key |
-| `/setup` | re-run the first-time setup flow |
+| `/settings [...]` | show/change models live (agents, conductor, PI), API key, **Telegram** |
+| `/setup` | re-run the first-time setup flow (API key, model, Telegram) |
 | `/mcp` | list MCP servers and live connection status |
 | `/deploy <agent>` / `/undeploy` / `/deploys` | host an agent on Render (cloud) & manage it |
 | `/agents` | list agents and what each is for |
@@ -216,6 +257,7 @@ Commands start with `/`. Anything without a slash is a natural-language goal for
 | `/status` / `/runs <name>` | in-flight runs / run history |
 | `/stream [on\|off]` | toggle the inline event feed (off = clean REPL; use the monitor) |
 | `/gc` | sweep orphan agent processes left by a previous host session (also runs at startup) |
+| `/schedule [list\|cancel <id>\|...]` | timed/recurring runs (or just say *"check X every hour today"*) |
 | `/logs <name> [n]` | tail an agent's log |
 | `/sessions <name>` / `/session <name> <id>` | list / inspect sessions |
 | `/help` / `/quit` | help / exit |
@@ -230,7 +272,9 @@ name: my-agent
 model: claude-sonnet-4-6
 system_prompt: |
   You are a helpful agent.
-tools: [sh, load_skill]      # web_search, sh, read_file, write_file, http_fetch, python, write_tool, load_skill
+tools: [sh, load_skill]      # web_search, web_fetch, image_search, fetch_sports_data, sh, read_file,
+                             # write_file, http_fetch, python, conversation_search, recent_chats,
+                             # schedule_create/list/cancel, send_notification, write_tool, load_skill
 skills: [summarize]
 mcp_servers: [filesystem]    # optional: MCP servers from mcp/servers.yaml
 can_author_tools: false      # true to allow write_tool (PI)
@@ -239,8 +283,9 @@ can_author_tools: false      # true to allow write_tool (PI)
 ## Layout
 
 ```text
-agentspace/host/      host REPL, supervisor, registry  (control plane)
+agentspace/host/      host REPL, supervisor, registry, scheduler ticker, telegram bridge  (control plane)
 agentspace/agent/     loop, server, sessions, tools, pi_bridge, mcp_client  (one per process)
+agentspace/common/    shared bits: paths, pricing, schedule store + NL time parser
 agents/               declarative agent registry (agent.yaml each)
 skills/               markdown skills
 mcp/servers.yaml      MCP server catalog (filesystem, fetch, git, github)
@@ -253,6 +298,10 @@ docs/                 TOOL_CONTRACT, AGENT_CONTRACT, MCP, DEPLOY
 `sh`, `python`, `write_file`, and `write_tool` run real commands / write & execute code on
 your machine (inside the agent's working dir, logged), and MCP servers run as local
 subprocesses. Great for a local sandbox; don't point these agents at untrusted input.
+
+The Telegram bridge is **locked to your own chat id** (others who find the bot are ignored),
+and credentials (bot token, chat id) live in `runtime/settings.json`, which is gitignored —
+keep it that way.
 
 ## License
 
