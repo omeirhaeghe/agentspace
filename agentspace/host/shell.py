@@ -30,6 +30,7 @@ from agentspace.host.orchestrator import Orchestrator
 from agentspace.common.schedule import parse_schedule
 from agentspace.host.scheduler import Ticker
 from agentspace.host.supervisor import Supervisor
+from agentspace.host.telegram_bridge import TelegramBridge
 
 BANNER = r"""
      ||      ||
@@ -102,6 +103,7 @@ class Shell:
         self._stop = threading.Event()
         self._stream = True  # inline interim event streaming in the REPL
         self.ticker = Ticker(root, fire=self._fire_scheduled)
+        self.telegram = TelegramBridge(self.orch)
 
     def _apply_settings(self) -> None:
         """Make the loaded settings take effect (conductor model + PI env)."""
@@ -836,6 +838,8 @@ class Shell:
 
     def _quit(self) -> bool:
         self._stop.set()
+        self.ticker.stop()
+        self.telegram.stop()
         running = self.sup.running_agents()
         if running:
             try:
@@ -869,6 +873,7 @@ class Shell:
         pending = self.ticker.store.list()
         if pending:
             print(f"⏰ {len(pending)} scheduled job(s) loaded — /schedule to view.\n")
+        self.telegram.start()
 
         prompt_fn = self._make_prompt()
         while True:
