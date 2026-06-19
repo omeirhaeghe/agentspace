@@ -113,6 +113,12 @@ class Shell:
             os.environ["AGENTSPACE_PI_MODEL"] = self.settings.pi_model
         else:
             os.environ.pop("AGENTSPACE_PI_MODEL", None)
+        # Push persisted Telegram creds into the env so the bridge and the agent
+        # processes (spawned by the supervisor) both inherit them.
+        if self.settings.telegram_bot_token:
+            os.environ["TELEGRAM_BOT_TOKEN"] = self.settings.telegram_bot_token
+        if self.settings.telegram_chat_id:
+            os.environ["TELEGRAM_CHAT_ID"] = self.settings.telegram_chat_id
 
     # -- helpers -------------------------------------------------------------
     def _agents(self):
@@ -325,15 +331,18 @@ class Shell:
     def _show_settings(self) -> None:
         key = "set" if os.environ.get("ANTHROPIC_API_KEY") else "NOT set"
         pim = self.settings.pi_model or "(PI default)"
+        tg = "on" if self.telegram.is_running() else (
+            "configured" if (self.settings.telegram_bot_token and self.settings.telegram_chat_id) else "off")
         print(f"\nAPI key:           {key}")
         print(f"conductor model:   {self.settings.conductor_model}")
         print(f"pi provider/model: {self.settings.pi_provider} / {pim}")
+        print(f"telegram bridge:   {tg}")
         print("\nagent models:")
         for spec in self._agents():
             state = "running" if self.sup.is_running(spec.name) else "stopped"
             print(f"  {spec.name:<18}{spec.model:<22}({state})")
         print("\nchange live: /settings model <agent|all> <model> · "
-              "/settings conductor <model> · /settings pi <model>")
+              "/settings conductor <model> · /settings pi <model> · /settings telegram <...>")
         print("models: opus | sonnet | haiku  (or a full id)\n")
 
     def cmd_settings(self, args):
@@ -371,8 +380,67 @@ class Shell:
                 return
             os.environ["ANTHROPIC_API_KEY"] = args[1]
             print("ANTHROPIC_API_KEY set for this session (not persisted — add to your shell profile to keep it).")
+        elif sub == "telegram":
+            self._settings_telegram(args[1:])
         else:
-            print("usage: /settings [model <agent|all> <model> | conductor <model> | pi <model> | key <api-key>]")
+            print("usage: /settings [model <agent|all> <model> | conductor <model> | "
+                  "pi <model> | key <api-key> | telegram <...>]")
+
+    def _settings_telegram(self, args):
+        """Configure the Telegram bridge/notifications, persisted in settings.json."""
+        sub = args[0].lower() if args else "show"
+        if sub == "token":
+            if len(args) < 2:
+                print("usage: /settings telegram token <bot-token>")
+                return
+            self.settings.telegram_bot_token = args[1]
+            settings_mod.save(self.root, self.settings)
+            self._apply_settings()
+            self.telegram.reload()
+            print("✓ telegram bot token saved.")
+            if not self.settings.telegram_chat_id:
+                print("  now message your bot once, then run: /settings telegram chatid")
+        elif sub in ("chat", "chatid"):
+            cid = None
+            if sub == "chat" and len(args) >= 2:
+                cid = args[1]
+            else:  # auto-detect from the latest message to the bot
+                token = self.settings.telegram_bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
+                if not token:
+                    print("set the token first: /settings telegram token <token>")
+                    return
+                cid = TelegramBridge.detect_chat_id(token)
+                if not cid:
+                    print("no recent message found — open Telegram, message your bot, then retry.")
+                    return
+            self.settings.telegram_chat_id = cid
+            settings_mod.save(self.root, self.settings)
+            self._apply_settings()
+            self.telegram.reload()
+            self.telegram.start()
+            print(f"✓ telegram chat id {cid} saved — bridge is on.")
+        elif sub == "test":
+            self.telegram.reload()
+            if not self.telegram.available():
+                print("telegram not configured — set token and chatid first.")
+                return
+            self.telegram.send("✅ AgentSpace test notification")
+            print("test message sent.")
+        elif sub == "off":
+            self.settings.telegram_bot_token = ""
+            self.settings.telegram_chat_id = ""
+            settings_mod.save(self.root, self.settings)
+            os.environ.pop("TELEGRAM_BOT_TOKEN", None)
+            os.environ.pop("TELEGRAM_CHAT_ID", None)
+            self.telegram.stop()
+            print("telegram disabled (token + chat id cleared).")
+        else:
+            tok = "set" if (self.settings.telegram_bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")) else "NOT set"
+            cid = self.settings.telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID") or "NOT set"
+            state = "on" if self.telegram.is_running() else "off"
+            print(f"telegram: token {tok} · chat id {cid} · bridge {state}")
+            print("  /settings telegram token <t>  ·  /settings telegram chatid (auto)  ·  "
+                  "/settings telegram test  ·  /settings telegram off")
 
     def cmd_setup(self, args=None):
         self.run_setup(initial=False)
@@ -410,7 +478,27 @@ class Shell:
                 print(f"  ✓ all agents → {model}")
             print(f"  ✓ conductor → {model}")
 
-        # 3) optional capabilities
+        # 3) phone notifications via Telegram (optional)
+        print("\nPhone notifications & remote control via Telegram (optional):")
+        if self.settings.telegram_bot_token and self.settings.telegram_chat_id:
+            print("  ✓ already configured (change with /settings telegram).")
+        elif input("  set up Telegram now? [y/N] ").strip().lower() == "y":
+            print("  1) In Telegram, message @BotFather → /newbot → copy the token it gives you.")
+            tok = input("  paste bot token (or Enter to skip): ").strip()
+            if tok:
+                self.settings.telegram_bot_token = tok
+                os.environ["TELEGRAM_BOT_TOKEN"] = tok
+                print("  2) Open Telegram and send your new bot any message (e.g. 'hi').")
+                input("  press Enter once you've messaged it… ")
+                cid = TelegramBridge.detect_chat_id(tok)
+                if cid:
+                    self.settings.telegram_chat_id = cid
+                    os.environ["TELEGRAM_CHAT_ID"] = cid
+                    print(f"  ✓ detected your chat id ({cid}) — notifications + bridge ready.")
+                else:
+                    print("  couldn't detect a chat id yet — run /settings telegram chatid later.")
+
+        # 4) optional capabilities
         def mark(ok, hint):
             return "✓ installed" if ok else f"✗ missing — {hint}"
 
@@ -421,6 +509,8 @@ class Shell:
 
         settings_mod.save(self.root, self.settings)
         self._apply_settings()
+        if self.telegram.reload():
+            self.telegram.start()
         print("\nsetup saved. type /help for commands, or just say what you want.\n")
 
     def cmd_mcp(self, args):

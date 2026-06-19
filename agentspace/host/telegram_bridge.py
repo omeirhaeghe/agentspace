@@ -34,6 +34,29 @@ class TelegramBridge:
     def available(self) -> bool:
         return bool(self.token and self.chat_id)
 
+    def is_running(self) -> bool:
+        return bool(self._thread and self._thread.is_alive())
+
+    def reload(self) -> bool:
+        """Re-read the token/chat id from the environment (after /settings changed them)."""
+        self.token = os.environ.get("TELEGRAM_BOT_TOKEN")
+        self.chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+        return self.available()
+
+    @staticmethod
+    def detect_chat_id(token: str) -> str | None:
+        """Return the chat id of the most recent message sent to the bot, if any."""
+        try:
+            r = httpx.get(f"https://api.telegram.org/bot{token}/getUpdates", timeout=15)
+            r.raise_for_status()
+            for upd in reversed(r.json().get("result", [])):
+                chat = ((upd.get("message") or {}).get("chat") or {}).get("id")
+                if chat is not None:
+                    return str(chat)
+        except (httpx.HTTPError, ValueError, KeyError):
+            return None
+        return None
+
     # -- lifecycle -----------------------------------------------------------
     def start(self) -> None:
         if not self.available() or (self._thread and self._thread.is_alive()):

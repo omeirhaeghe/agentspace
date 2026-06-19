@@ -32,6 +32,9 @@ class Settings:
     conductor_model: str = DEFAULT_MODEL
     pi_model: str = ""        # "" → let PI pick its default
     pi_provider: str = "anthropic"
+    # Telegram bridge / notifications (stored here, gitignored, like other settings).
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
 
 def settings_file(root: Path) -> Path:
