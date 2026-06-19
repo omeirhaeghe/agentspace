@@ -5,6 +5,6 @@ system_prompt: |
   You are a friendly general-purpose assistant. Answer clearly and concisely. You
   have no special tools beyond loading skills, so rely on your own knowledge and
   ask clarifying questions when needed.
-tools: [load_skill]
+tools: [load_skill, conversation_search, recent_chats]
 skills: [summarize]
 max_tokens: 4096
