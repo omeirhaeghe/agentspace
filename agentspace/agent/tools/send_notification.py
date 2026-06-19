@@ -2,6 +2,9 @@
 
 Delivers through whatever channels are available, best-effort:
 - **desktop** — a native macOS notification (via `osascript`), when on darwin.
+- **telegram** — to your phone via a bot, if `TELEGRAM_BOT_TOKEN` and
+  `TELEGRAM_CHAT_ID` are set (create a bot with @BotFather; get the chat id from
+  https://api.telegram.org/bot<token>/getUpdates after messaging the bot once).
 - **slack** — POST to `SLACK_WEBHOOK_URL` if that env var is set.
 - **log** — always appended to `runtime/notifications.log` as a durable record.
 
@@ -53,6 +56,24 @@ def _desktop(title: str, message: str) -> bool:
         return False
 
 
+def _telegram(title: str, message: str) -> bool:
+    import os
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return False
+    text = f"*{title}*\n{message}" if title else message
+    try:
+        r = httpx.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+        return r.status_code < 300
+    except httpx.HTTPError:
+        return False
+
+
 def _slack(title: str, message: str) -> bool:
     import os
     url = os.environ.get("SLACK_WEBHOOK_URL")
@@ -73,6 +94,8 @@ def handler(ctx, message: str, title: str = "AgentSpace") -> str:
     delivered = []
     if _desktop(title, message):
         delivered.append("desktop")
+    if _telegram(title, message):
+        delivered.append("telegram")
     if _slack(title, message):
         delivered.append("slack")
 
