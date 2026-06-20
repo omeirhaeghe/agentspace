@@ -13,18 +13,23 @@ from __future__ import annotations
 
 import os
 import threading
+import time
+from pathlib import Path
 from typing import Callable
 
 import httpx
 
-POLL_TIMEOUT = 25      # Telegram long-poll seconds
-MAX_REPLY = 3900       # Telegram caps messages at 4096 chars
+POLL_TIMEOUT = 25                 # Telegram long-poll seconds
+MAX_REPLY = 3900                  # Telegram caps messages at 4096 chars
+TELEGRAM_MAX = 50 * 1024 * 1024   # bot upload cap
+MAX_ATTACH = 5                    # files auto-attached per run
 
 
 class TelegramBridge:
-    def __init__(self, orch, log: Callable[[str], None] = print):
+    def __init__(self, orch, log: Callable[[str], None] = print, output_dir: Path | None = None):
         self.orch = orch
         self.log = log
+        self.output_dir = Path(output_dir) if output_dir else None
         self.token = os.environ.get("TELEGRAM_BOT_TOKEN")
         self.chat_id = os.environ.get("TELEGRAM_CHAT_ID")
         self._stop = threading.Event()
@@ -93,6 +98,40 @@ class TelegramBridge:
         except httpx.HTTPError as exc:
             self.log(f"[telegram] send failed: {exc}")
 
+    def send_document(self, path: Path, caption: str = "") -> bool:
+        """Upload a file to the chat via sendDocument. Returns success."""
+        if not self.available():
+            return False
+        try:
+            if path.stat().st_size > TELEGRAM_MAX:
+                self.send(f"⚠️ {path.name} is too big to send over Telegram (>50MB); "
+                          f"it's in output/.")
+                return False
+            with path.open("rb") as fh:
+                r = httpx.post(
+                    f"https://api.telegram.org/bot{self.token}/sendDocument",
+                    data={"chat_id": self.chat_id, "caption": caption or path.name},
+                    files={"document": (path.name, fh)},
+                    timeout=120,
+                )
+            return r.status_code < 300
+        except (httpx.HTTPError, OSError) as exc:
+            self.log(f"[telegram] sendDocument failed: {exc}")
+            return False
+
+    def _attach_new_files(self, since: float) -> None:
+        """Send files produced under output_dir during the just-finished run."""
+        if not self.output_dir or not self.output_dir.is_dir():
+            return
+        fresh = sorted(
+            (p for p in self.output_dir.rglob("*")
+             if p.is_file() and p.stat().st_mtime >= since),
+            key=lambda p: p.stat().st_mtime,
+        )
+        for p in fresh[:MAX_ATTACH]:
+            if self.send_document(p):
+                self.log(f"📲 telegram sent file {p.name}")
+
     # -- poll loop -----------------------------------------------------------
     def _drain_backlog(self) -> None:
         """Skip messages that arrived before the host started."""
@@ -143,10 +182,12 @@ class TelegramBridge:
     def _run_goal(self, text: str) -> None:
         self.log(f"📲 telegram> {text}")
         self.send("🧭 on it…")
+        started = time.time()
         try:
             final = self.orch.run(text, lambda kind, t: None)
         except Exception as exc:  # noqa: BLE001
             self.send(f"error: {exc}")
             return
         self.send(final or "(done — no text result)")
+        self._attach_new_files(started)  # ship any PDFs/decks/etc. the run produced
         self.log("📲 telegram reply sent")

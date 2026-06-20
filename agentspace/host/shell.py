@@ -103,7 +103,7 @@ class Shell:
         self._stop = threading.Event()
         self._stream = True  # inline interim event streaming in the REPL
         self.ticker = Ticker(root, fire=self._fire_scheduled)
-        self.telegram = TelegramBridge(self.orch)
+        self.telegram = TelegramBridge(self.orch, output_dir=paths.output_dir(root))
 
     def _apply_settings(self) -> None:
         """Make the loaded settings take effect (conductor model + PI env)."""
