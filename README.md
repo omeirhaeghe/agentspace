@@ -168,15 +168,11 @@ load history → call the model → if it wants a tool, run it and feed the resu
 
 That loop is the whole point — nothing is hidden behind an SDK.
 
-**Tools** come in three flavors:
-- `web_search` is a **server tool** — Anthropic runs it; we never touch it.
-- **client tools** we execute locally: `sh`, `read_file`, `write_file`, `http_fetch`,
-  `web_fetch`, `image_search`, `fetch_sports_data`, `conversation_search`, `recent_chats`,
-  `python`, `load_skill`, `write_tool`, `schedule_create`/`schedule_list`/`schedule_cancel`,
-  `send_notification`.
+**Tools** come in three flavors, all landing in the same `(tools, handlers)` the loop dispatches:
+- **client tools** — run locally by the host (the full set is in [🧰 Tools](#-tools) below).
+- `web_search` — a **server tool** Anthropic runs; we never touch it.
 - **MCP tools** — pulled from [Model Context Protocol](https://modelcontextprotocol.io)
-  servers an agent connects to (`mcp__<server>__<tool>`). All three flavors land in the
-  same `(tools, handlers)` the loop dispatches. See [docs/MCP.md](docs/MCP.md).
+  servers an agent connects to (`mcp__<server>__<tool>`). See [docs/MCP.md](docs/MCP.md).
 
 **Skills** (`skills/<name>/SKILL.md`) are markdown playbooks with progressive
 disclosure: the prompt only lists a skill's name + description until the agent calls
@@ -227,6 +223,38 @@ the [PI](https://github.com/badlogic/pi-mono) coding agent:
   tracking agent"* → a ready-to-run agent that can even author its own quote-fetching tool.
 
 ---
+
+## 🧰 Tools
+
+Every agent gets the tools its `agent.yaml` lists. Three flavors, one dispatch path.
+
+**Native (client) tools** — run locally by the host:
+
+| tool | what it does |
+|---|---|
+| `sh` | run a shell command on the host machine |
+| `python` | run a Python 3 snippet, return stdout+stderr |
+| `read_file` / `write_file` | read / write a UTF-8 text file |
+| `http_fetch` | HTTP GET a URL, return the raw body |
+| `web_fetch` | fetch a page as full readable text (markup stripped) |
+| `image_search` | search the web for images (inline markdown thumbnails) |
+| `fetch_sports_data` | live scores, status & schedules for major leagues (incl. the FIFA World Cup) |
+| `conversation_search` | search past session transcripts (memory) by keyword |
+| `recent_chats` | list recent sessions, newest-first |
+| `schedule_create` / `schedule_list` / `schedule_cancel` | timed & recurring runs (the scheduler agent's tools) |
+| `send_notification` | short alert → desktop popup, Slack, and/or **Telegram** (your phone) |
+| `send_file` | deliver a produced file to you via Telegram (as a download) |
+| `load_skill` | pull in a skill's full instructions on demand |
+| `write_tool` | **author a brand-new tool for itself** via [PI](https://github.com/badlogic/pi-mono) (needs `can_author_tools`) |
+
+**Server tool** — `web_search`: Anthropic runs it and returns results inline.
+
+**MCP tools** — any [MCP](https://modelcontextprotocol.io) server's tools, declared in
+`mcp/servers.yaml` and wired per agent (`mcp__<server>__<tool>`): e.g. `filesystem`, `fetch`,
+`git`, `github`. See [docs/MCP.md](docs/MCP.md).
+
+> 🛠️ Tools an agent writes for itself with `write_tool` land in
+> `agentspace/agent/tools/generated/` and become callable on the very next turn — no restart.
 
 ## Models
 
