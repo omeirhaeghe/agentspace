@@ -207,6 +207,34 @@ class Supervisor:
         self.stop(name)
         return self.start(name)
 
+    def ensure_running(self, name: str, progress=None, wake_timeout: float = 75.0) -> dict:
+        """Make `name` reachable, starting or waking it as appropriate.
+
+        Local agents are spawned (same as `start`). A *remote* agent can't be started
+        by us, but a deployed service that has spun down (e.g. Render's free plan) is
+        woken simply by hitting it — so we health-poll until it answers or we give up.
+        This is what lets an unattended scheduled fire reach a cold deployed agent
+        instead of abandoning it after one quick probe (the old behaviour: `start()` is
+        a no-op for remotes, so a single failed health check aborted the run)."""
+        progress = progress or (lambda _t: None)
+        if not self.remote(name):
+            return self.start(name)
+        if self.is_running(name):
+            return {"ok": True, "message": f"{name} reachable (remote)"}
+        base = self.base_url(name)
+        if not base:
+            return {"ok": False, "message": f"{name} has no remote URL; (re)deploy it."}
+        progress(f"{name} is cold — waking the remote service (up to {int(wake_timeout)}s)…")
+        deadline = time.monotonic() + wake_timeout
+        while time.monotonic() < deadline:
+            try:
+                if httpx.get(f"{base}/health", timeout=10).status_code == 200:
+                    return {"ok": True, "message": f"{name} awake (remote)"}
+            except httpx.HTTPError:
+                pass
+            time.sleep(3)
+        return {"ok": False, "message": f"{name} (remote) did not wake within {int(wake_timeout)}s."}
+
     def _clear_files(self, name: str) -> None:
         for path in (self._pid_file(name), self._port_file(name)):
             try:

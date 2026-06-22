@@ -129,10 +129,11 @@ class Orchestrator:
             return f"ERROR: no such agent '{agent}'. Call list_agents first."
 
         if not self.sup.is_running(agent):
-            emit("step", f"starting {agent}…")
-            self.sup.start(agent)
-            if not self.sup.is_running(agent):
-                return f"ERROR: could not start agent '{agent}'."
+            remote = self.sup.remote(agent)
+            emit("step", f"{'waking' if remote else 'starting'} {agent}…")
+            res = self.sup.ensure_running(agent, progress=lambda t: emit("subevent", t))
+            if not res["ok"]:
+                return f"ERROR: {res.get('message', 'could not reach ' + agent)}"
 
         emit("delegate", f"{agent}  ←  {task[:110]}")
         res = self.sup.send(agent, task)
