@@ -18,12 +18,21 @@ from pathlib import Path
 
 import httpx
 
+from agentspace.agent.config import AgentSpec
 from agentspace.common import paths
 from agentspace.host import remotes
+from agentspace.host import settings as host_settings
 
 API = "https://api.render.com/v1"
 POLL_TIMEOUT = 600
-PASSTHROUGH_ENV = ("ANTHROPIC_API_KEY", "AGENTSPACE_TOKEN", "GITHUB_TOKEN")
+# Host env vars forwarded verbatim to the deployed service when present.
+PASSTHROUGH_ENV = ("ANTHROPIC_API_KEY", "AGENTSPACE_TOKEN", "GITHUB_TOKEN", "SLACK_WEBHOOK_URL")
+
+# Tools/capabilities that don't carry over to a Render container the way they do on the
+# host. Used both to warn at deploy time and to keep that warning honest.
+SCHEDULE_TOOLS = {"schedule_create", "schedule_list", "schedule_cancel"}
+LOCAL_FS_TOOLS = {"sh", "python", "read_file", "write_file"}
+LOCAL_FS_MCP = {"filesystem", "git"}
 
 
 def _headers() -> dict:
@@ -62,12 +71,63 @@ def _find_service(client: httpx.Client, name: str) -> dict | None:
     return items[0]["service"] if items else None
 
 
-def _env_vars(agent: str) -> list[dict]:
+def _notify_env(root: Path) -> dict[str, str]:
+    """Telegram creds to forward so a cloud agent's send_notification can reach a phone.
+
+    Prefer the environment; fall back to the host's settings.json (where `/setup` stores
+    them). Slack rides along via PASSTHROUGH_ENV (SLACK_WEBHOOK_URL).
+    """
+    tok = os.environ.get("TELEGRAM_BOT_TOKEN")
+    cid = os.environ.get("TELEGRAM_CHAT_ID")
+    if not (tok and cid):
+        s = host_settings.load(root)
+        tok = tok or s.telegram_bot_token
+        cid = cid or s.telegram_chat_id
+    if tok and cid:
+        return {"TELEGRAM_BOT_TOKEN": tok, "TELEGRAM_CHAT_ID": cid}
+    return {}
+
+
+def _has_notify_creds(root: Path) -> bool:
+    return bool(os.environ.get("SLACK_WEBHOOK_URL")) or bool(_notify_env(root))
+
+
+def cloud_warnings(spec: AgentSpec, *, notify_creds: bool) -> list[str]:
+    """Human-readable notes on which of this agent's tools degrade in the cloud."""
+    tools = set(spec.tools)
+    warns: list[str] = []
+    if tools & SCHEDULE_TOOLS:
+        warns.append(
+            "schedule_* — scheduling runs host-side; a cloud agent writes jobs the host "
+            "ticker never fires."
+        )
+    if "send_notification" in tools and not notify_creds:
+        warns.append(
+            "send_notification — no Telegram/Slack creds to forward and desktop is "
+            "macOS-only; alerts fall back to log-only. Run /setup (or set "
+            "TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID / SLACK_WEBHOOK_URL), then redeploy."
+        )
+    if spec.can_author_tools or "write_tool" in tools:
+        warns.append(
+            "write_tool / PI — pi-coding-agent isn't in the image and authored files are "
+            "ephemeral; self-authoring won't work in the cloud."
+        )
+    if (tools & LOCAL_FS_TOOLS) or (set(spec.mcp_servers) & LOCAL_FS_MCP):
+        warns.append(
+            "sh / python / file tools and the filesystem & git MCP servers act on the "
+            "container's repo snapshot, not your Mac's live files."
+        )
+    return warns
+
+
+def _env_vars(root: Path, agent: str) -> list[dict]:
     out = [{"key": "AGENTSPACE_AGENT", "value": agent}]
     for k in PASSTHROUGH_ENV:
         v = os.environ.get(k)
         if v:
             out.append({"key": k, "value": v})
+    for k, v in _notify_env(root).items():
+        out.append({"key": k, "value": v})
     return out
 
 
@@ -81,6 +141,17 @@ def create_or_deploy(root: Path, agent: str, plan: str = "starter", progress=Non
     cfg = paths.agents_dir(root) / agent / "agent.yaml"
     if not cfg.is_file():
         return False, f"no such agent: {agent}", None
+
+    # Surface tools that won't behave the same on Render *before* the long build.
+    try:
+        warns = cloud_warnings(AgentSpec.from_yaml(cfg), notify_creds=_has_notify_creds(root))
+    except Exception:  # noqa: BLE001 — never block a deploy on the advisory check
+        warns = []
+    if warns:
+        progress("⚠ heads-up — some of this agent's tools degrade in the cloud:")
+        for w in warns:
+            progress(f"  - {w}")
+
     repo = _repo_url(root)
     if "github.com" not in repo:
         return False, "could not determine a GitHub repo URL (set AGENTSPACE_REPO).", None
@@ -108,7 +179,7 @@ def create_or_deploy(root: Path, agent: str, plan: str = "starter", progress=Non
                         "envSpecificDetails": {"dockerfilePath": "./Dockerfile", "dockerContext": "."},
                         "disk": {"name": f"{service_name}-data", "mountPath": "/data", "sizeGB": 1},
                     },
-                    "envVars": _env_vars(agent),
+                    "envVars": _env_vars(root, agent),
                 }
                 r = client.post(f"{API}/services", json=payload)
                 if r.status_code >= 300:
@@ -118,7 +189,7 @@ def create_or_deploy(root: Path, agent: str, plan: str = "starter", progress=Non
                 service_id = service["id"]
 
             # Make sure env vars are current, then trigger a deploy.
-            client.put(f"{API}/services/{service_id}/env-vars", json=_env_vars(agent))
+            client.put(f"{API}/services/{service_id}/env-vars", json=_env_vars(root, agent))
             progress("triggering deploy…")
             r = client.post(f"{API}/services/{service_id}/deploys", json={})
             if r.status_code >= 300:
