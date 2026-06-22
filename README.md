@@ -3,45 +3,57 @@
 </p>
 
 <p align="center">
-  A tiny <b>agent operating system</b> you run from a shell — built from scratch to learn how agents actually work.<br>
-  Talk to it in plain English; it orchestrates agents, and <i>writes new tools and whole agents for itself</i> — all from a hand-written, hackable loop (no agent framework).
+  <b>An agent OS you run from a shell.</b><br>
+  Agents run locally on your Mac, write their own tools and their own agents —<br>
+  and take commands from your phone. <b>No framework. No SDK. Just the loop.</b>
 </p>
 
 <p align="center">
-  <img src="docs/demo.svg" alt="AgentSpace — natural-language orchestration demo" width="760">
-  <br><sub><i>Illustrative walkthrough: one plain-English goal → the conductor routes tech-writer (PRD, via a skill) → coder (scaffold + tests).</i></sub>
+  <img src="docs/demo.svg" alt="AgentSpace — self-writing tools, two-way phone control, self-writing agents" width="760">
+  <br><sub><i>One goal writes a tool and arms a watch · a text from your phone drives the whole thing · an agent builds itself, live.</i></sub>
 </p>
 
 ---
 
-## ✨ Highlights
+## Why
 
-- 🗣️ **Just talk to it.** Type a goal in plain English; a built-in **conductor** discovers
-  the right agents, delegates, chains them, and synthesizes the answer.
-- 🛠️ **Agents write their own tools.** Missing a capability? An agent calls `write_tool`
-  and [PI](https://github.com/badlogic/pi-mono) authors it into the registry — usable on
-  the next turn.
-- 🤖 **The system writes its own agents.** `create-agent "a stock portfolio tracker"`
-  (or just ask) and PI builds a whole new agent, live, no restart.
-- ⏰ **Schedule & watch.** *"check stock quotes every hour today"* or *"tell me if BTC
-  breaks $70k"* — a **scheduler** agent sets up timed/recurring runs and a **watchdog**
-  agent pings you only when a condition actually trips. Jobs survive restarts.
-- 📲 **Reaches your phone — both ways.** Agents push alerts to **Telegram** (or desktop /
-  Slack), and you can **text the bot back** to drive the conductor remotely — schedule a
-  watch, ask a question, get the answer, all from your phone.
-- 🔌 **MCP built in.** Agents can use any [Model Context Protocol](https://modelcontextprotocol.io)
-  server's tools (filesystem, fetch, git, github, … ) — declared in `mcp/servers.yaml`,
-  wired per agent. Plus native tools: web & image search, full-page `web_fetch`, sports
-  data, `python`, file I/O, conversation recall, scheduling, and notifications.
-- ☁️ **Deploy to the cloud.** `/deploy <agent>` hosts an agent on [Render](https://render.com)
-  (token-protected) straight from the shell — then `/send` it like any local one. See
-  [docs/DEPLOY.md](docs/DEPLOY.md).
-- 🧩 **Everything is hackable & visible.** A hand-written tool-loop (no agent SDK),
-  declarative agents (`agent.yaml`), markdown skills, on-disk sessions.
-- ⚡ **Parallel & observable.** Each agent is its own process; runs are async with a live
-  status feed, plus a separate `agentspace-monitor` console.
+Most agent demos hide the loop behind an SDK. Here **the loop *is* the project** — a
+hand-written read-call-run-repeat against the raw Messages API, short enough to read in
+one sitting. Talk to it in plain English; a **conductor** routes the work across agents.
+When an agent is missing a capability it **writes the tool and keeps going**. Ask for a
+new kind of agent and it **writes that too** — live, no restart. Then text it from your
+phone and watch the same thing happen from a café.
 
-## 🎬 Examples
+It started as a learning project. It got out of hand. That's the point.
+
+## ✨ What it does
+
+- 🛠️ **Writes its own tools.** An agent missing a capability calls `write_tool`;
+  [PI](https://github.com/badlogic/pi-mono) authors the module into the registry, it
+  hot-reloads, and the agent calls its brand-new tool *on the next turn*. `doc-writer`
+  ships with **no** document tool — and builds one on demand.
+- 🤖 **Writes its own agents.** `/create-agent "a stock portfolio tracker"` (or just ask)
+  and PI scaffolds a whole new `agent.yaml` — prompt, tools, skills. Discovered instantly.
+  No restart.
+- 🗣️ **Just talk to it.** Type a goal in plain English; the **conductor** discovers the
+  right agents, delegates, chains them, and synthesizes the answer — streaming each step.
+- 📲 **Lives on your phone — both ways.** Agents push alerts to **Telegram** (or desktop /
+  Slack), and you **text the bot back** to drive the conductor remotely. Locked to your
+  own chat id.
+- ⏰ **Schedules & watches.** *"check stock quotes every hour today"* spins up timed runs;
+  *"tell me if BTC breaks $70k"* arms a **watchdog** that stays silent until it trips.
+  Jobs survive restarts.
+- 🔌 **MCP + native tools.** Any [Model Context Protocol](https://modelcontextprotocol.io)
+  server (filesystem, fetch, git, github, …) wired per agent in `mcp/servers.yaml`, plus
+  native tools: web & image search, full-page `web_fetch`, sports data, `python`, file
+  I/O, conversation recall, scheduling, notifications.
+- ☁️ **One command to the cloud.** `/deploy <agent>` hosts it on
+  [Render](https://render.com) (token-protected) from the shell — then `/send` it like any
+  local one. See [docs/DEPLOY.md](docs/DEPLOY.md).
+- 🧩 **Hackable & visible.** No agent SDK. Declarative agents (`agent.yaml`), markdown
+  skills, on-disk sessions, one OS process per agent, async runs with a live status feed.
+
+## 🎬 Try it
 
 Type these straight into the `agentspace>` prompt:
 
@@ -70,11 +82,23 @@ watch AAPL and tell me if it drops below $180, check every 30 minutes
 I want to track my reading list — set that up and add "Dune"
 ```
 
-> 📲 **From your phone:** with Telegram configured (`/setup`), text the bot any of the
-> above and it routes through the same conductor — replies come straight back.
-
 > Commands start with `/` (try `/list` to see everything you've got). Anything **without**
 > a slash is a natural-language goal handed to the conductor.
+
+## 📲 …from your phone
+
+Wire up a Telegram bot once (`/setup`, ~2 min) and the same bot **pushes alerts to you**
+*and* **takes commands from you**. Be three timezones from your desk and text:
+
+```text
+track BTC and ping me if it cracks $70k          → arms a watch; alert lands on your phone
+what are france's world cup odds?                → conductor → researcher → answer texted back
+fetch the top HN headlines and summarize them    → runs the orchestration remotely
+how's $5k across NVDA, AAPL, MSFT doing?          → portfolio agent replies in the thread
+```
+
+Same conductor, same agents, same thread — replies come straight back. Nobody but your
+chat id can drive it.
 
 ---
 
