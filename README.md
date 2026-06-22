@@ -17,14 +17,11 @@
 
 ## Why
 
-Most agent demos hide the loop behind an SDK. Here **the loop *is* the project** — a
-hand-written read-call-run-repeat against the raw Messages API, short enough to read in
-one sitting. Talk to it in plain English; a **conductor** routes the work across agents.
-When an agent is missing a capability it **writes the tool and keeps going**. Ask for a
-new kind of agent and it **writes that too** — live, no restart. Then text it from your
-phone and watch the same thing happen from a café.
-
-It started as a learning project. It got out of hand. That's the point.
+Most agent demos hide the loop behind an SDK. Here **the loop *is* the project** —
+hand-written, against the raw Messages API. Talk to it in plain English; a **conductor**
+routes work across agents. Missing a capability? An agent **writes the tool** and keeps
+going. Need a new kind of agent? It **writes that too** — live, no restart. And you can
+drive the whole thing **from your phone**.
 
 ## ✨ What it does
 
