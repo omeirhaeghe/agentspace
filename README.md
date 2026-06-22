@@ -85,6 +85,10 @@ I want to track my reading list — set that up and add "Dune"
 > Commands start with `/` (try `/list` to see everything you've got). Anything **without**
 > a slash is a natural-language goal handed to the conductor.
 
+> 🧑‍🍳 **Not sure where to start?** [docs/RECIPES.md](docs/RECIPES.md) bundles the 17 agents
+> into a handful of curated starting points (research desk, code workbench, watch & notify, …)
+> — each with the one prerequisite to flip on and a goal to paste.
+
 ## 📲 …from your phone
 
 Wire up a Telegram bot once (`/setup`, ~2 min) and the same bot **pushes alerts to you**
