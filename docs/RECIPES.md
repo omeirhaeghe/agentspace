@@ -122,6 +122,9 @@ routes, or `/send` directly):
   `job_search.csv`.
 - **`portfolio-tracker`** — tracks a stock portfolio, fetches quotes, and recommends
   buy/sell/hold.
+- **`sports`** — live scores, status, and schedules for major leagues (incl. the FIFA
+  World Cup); can push a score update to your phone. Pair with the scheduler for
+  per-game score loops (e.g. *"text me the France score every 5 min until the game ends"*).
 - **`french-translator`** — turns any text into natural, idiomatic French.
 - **`shell-helper`** — runs shell commands and inspects files in the project dir.
 - **`tic-tac-toe`** — plays O against you. Because why not.

@@ -30,6 +30,12 @@ LEAGUES = {
     "ucl": "soccer/uefa.champions",
     "champions-league": "soccer/uefa.champions",
     "mls": "soccer/usa.1",
+    "world-cup": "soccer/fifa.world",
+    "fifa-world-cup": "soccer/fifa.world",
+    "wc": "soccer/fifa.world",
+    "fifa": "soccer/fifa.world",
+    "club-world-cup": "soccer/fifa.cwc",
+    "cwc": "soccer/fifa.cwc",
 }
 
 SCHEMA = {
