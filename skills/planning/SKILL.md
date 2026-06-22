@@ -1,6 +1,6 @@
 ---
 name: planning
-description: Turn a fuzzy goal into a concrete, ordered, verifiable plan.
+description: Turn a fuzzy goal into a concrete, ordered, verifiable plan. Use when asked to plan, scope, design an approach, or break down a task or project before doing the work.
 ---
 # Planning
 

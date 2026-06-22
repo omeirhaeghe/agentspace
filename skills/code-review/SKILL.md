@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review code for correctness, clarity, and risk — high signal, low noise.
+description: Review code for correctness, clarity, and risk — high signal, low noise. Use when asked to review a diff or PR, check changes before merging, or find bugs and issues in existing code.
 ---
 # Code review
 

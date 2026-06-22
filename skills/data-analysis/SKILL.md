@@ -1,6 +1,6 @@
 ---
 name: data-analysis
-description: Explore data and answer questions with reproducible computation.
+description: Explore data and answer questions with reproducible computation. Use when asked to analyze a dataset, CSV, or table, compute a metric or trend, or answer a quantitative question from data.
 ---
 # Data analysis
 

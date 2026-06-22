@@ -1,6 +1,6 @@
 ---
 name: prd
-description: Write a complete PRD for a software/AI product (incl. Golden Test Cases & Local Model Requirements).
+description: Write a complete PRD for a software/AI product (incl. Golden Test Cases & Local Model Requirements). Use when asked to write a PRD, product requirements doc, or spec for a feature or product.
 ---
 # Writing a PRD (software product)
 

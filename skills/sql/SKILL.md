@@ -1,6 +1,6 @@
 ---
 name: sql
-description: Write correct, readable SQL and reason about query results.
+description: Write correct, readable SQL and reason about query results. Use when asked to write, fix, or explain a SQL query, or to answer a question that requires querying a database.
 ---
 # SQL
 

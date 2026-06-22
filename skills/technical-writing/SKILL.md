@@ -1,6 +1,6 @@
 ---
 name: technical-writing
-description: Write clear docs and explanations that lead with the point.
+description: Write clear docs and explanations that lead with the point. Use when asked to write or improve documentation, a README, guide, explainer, or technical prose.
 ---
 # Technical writing
 

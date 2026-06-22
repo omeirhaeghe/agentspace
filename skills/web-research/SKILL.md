@@ -1,6 +1,6 @@
 ---
 name: web-research
-description: Structured multi-source web research with citations.
+description: Structured multi-source web research with citations. Use when answering needs current or external information from the web, or when claims should be backed by cited sources.
 ---
 # Web research
 

@@ -1,6 +1,6 @@
 ---
 name: debugging
-description: Find root causes methodically instead of guessing at fixes.
+description: Find root causes methodically instead of guessing at fixes. Use when something is broken, erroring, crashing, failing a test, or producing wrong output and needs diagnosing.
 ---
 # Debugging
 

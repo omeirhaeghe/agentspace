@@ -1,6 +1,6 @@
 ---
 name: summarize
-description: Produce tight, faithful summaries at a requested length.
+description: Produce tight, faithful summaries at a requested length. Use when asked to summarize, condense, TL;DR, or shorten a document, article, thread, or transcript.
 ---
 # Summarize
 

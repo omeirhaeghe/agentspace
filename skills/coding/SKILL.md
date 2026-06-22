@@ -1,6 +1,6 @@
 ---
 name: coding
-description: Write clean, working code that matches the surrounding style.
+description: Write clean, working code that matches the surrounding style. Use when asked to implement, add, change, refactor, or fix code in a project.
 ---
 # Coding
 
