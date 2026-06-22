@@ -17,11 +17,14 @@
 
 ## Why
 
-Most agent demos hide the loop behind an SDK. Here **the loop *is* the project** —
-hand-written, against the raw Messages API. Talk to it in plain English; a **conductor**
-routes work across agents. Missing a capability? An agent **writes the tool** and keeps
-going. Need a new kind of agent? It **writes that too** — live, no restart. And you can
-drive the whole thing **from your phone**.
+**Most agents talk. This one builds.**
+
+The loop *is* the project — hand-written against the raw Messages API, no SDK in the way.
+Talk to it in plain English. A **conductor** routes the work across agents. Missing a
+capability? It **writes the tool** and keeps going. Need a new kind of agent? It **builds
+that too** — live, no restart.
+
+Runs on your machine. Driven from your phone. Yours to hack, top to bottom.
 
 ## ✨ What it does
 
