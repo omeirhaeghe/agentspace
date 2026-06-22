@@ -111,6 +111,23 @@ write a PRD for a CLI that converts CSVs into charts
 
 ---
 
+### …and a few specialists
+
+Some agents are single-purpose and don't need a bundle — just talk to them (the conductor
+routes, or `/send` directly):
+
+- **`competitive-analyst`** — researches a market and produces a structured competitive
+  landscape report.
+- **`job-search`** — finds current openings for a role and appends the top 5 to
+  `job_search.csv`.
+- **`portfolio-tracker`** — tracks a stock portfolio, fetches quotes, and recommends
+  buy/sell/hold.
+- **`french-translator`** — turns any text into natural, idiomatic French.
+- **`shell-helper`** — runs shell commands and inspects files in the project dir.
+- **`tic-tac-toe`** — plays O against you. Because why not.
+
+---
+
 ### Prerequisites cheat-sheet
 
 | Thing | Needed for | How |
